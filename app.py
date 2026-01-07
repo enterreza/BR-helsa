@@ -15,23 +15,28 @@ st.set_page_config(page_title="Helsa Business Review", layout="wide")
 def load_data():
     try:
         df = pd.read_csv(URL)
-        
-        # Pembersihan Nama Kolom (menghapus spasi berlebih atau karakter aneh)
         df.columns = df.columns.str.strip()
         
-        # Konversi kolom angka (menangani format ribuan jika ada)
+        # Daftar kolom yang harus berupa angka
         numeric_cols = [
             'Target Revenue', 'Actual Revenue (Total)', 'Actual Revenue (Opt)', 
             'Actual Revenue (Ipt)', 'Volume OPT JKN', 'Volume OPT Non JKN',
             'Volume IPT JKN', 'Volume IPT Non JKN'
         ]
+        
         for col in numeric_cols:
             if col in df.columns:
+                # 1. Ubah ke string
+                df[col] = df[col].astype(str)
+                # 2. Hapus simbol Rp, titik (ribuan), atau koma (ribuan/desimal)
+                # Kami menghapus semua karakter kecuali angka
+                df[col] = df[col].str.replace(r'[^\d]', '', regex=True)
+                # 3. Ubah ke numeric
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         
         return df
     except Exception as e:
-        st.error(f"Gagal memuat sheet '{SHEET_NAME}': {e}")
+        st.error(f"Gagal memuat data: {e}")
         return pd.DataFrame()
 
 # Load Data
