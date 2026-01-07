@@ -25,7 +25,6 @@ def load_data():
         
         for col in numeric_cols:
             if col in raw_df.columns:
-                # Membersihkan karakter non-angka
                 raw_df[col] = raw_df[col].astype(str).str.replace(r'[^\d]', '', regex=True)
                 raw_df[col] = pd.to_numeric(raw_df[col], errors='coerce').fillna(0)
         
@@ -42,7 +41,6 @@ if not df.empty:
     all_cabang = df['Cabang'].unique()
     selected_cabang = st.sidebar.multiselect("Pilih Cabang:", all_cabang, default=all_cabang)
     
-    # Pre-processing Data
     month_order = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
                    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
     
@@ -50,103 +48,122 @@ if not df.empty:
     filtered_df['Bulan'] = pd.Categorical(filtered_df['Bulan'], categories=month_order, ordered=True)
     filtered_df = filtered_df.sort_values(['Cabang', 'Bulan'])
 
-    # Hitung Growth MoM
-    filtered_df['Growth'] = filtered_df.groupby('Cabang')['Actual Revenue (Total)'].pct_change() * 100
+    # Perhitungan Total & Growth
+    filtered_df['Total Volume OPT'] = filtered_df['Volume OPT JKN'] + filtered_df['Volume OPT Non JKN']
+    filtered_df['Rev Growth'] = filtered_df.groupby('Cabang')['Actual Revenue (Total)'].pct_change() * 100
+    filtered_df['Vol Growth'] = filtered_df.groupby('Cabang')['Total Volume OPT'].pct_change() * 100
 
-    # --- HEADER ---
-    st.title("📊 Dashboard Pertumbuhan & Realisasi Helsa-BR")
+    st.title("📊 Dashboard Performa Helsa-BR")
     
-    # --- 4. VISUALISASI CHART ---
+    # Mapping Warna (4 Warna Utama dengan variasi Terang/Gelap)
+    colors = {
+        'Jatirahayu': {'base': '#3b82f6', 'light': '#93c5fd', 'dark': '#1d4ed8'},
+        'Cikampek':   {'base': '#8b5cf6', 'light': '#c4b5fd', 'dark': '#6d28d9'},
+        'Citeureup':  {'base': '#6366f1', 'light': '#a5b4fc', 'dark': '#4338ca'},
+        'Ciputat':    {'base': '#10b981', 'light': '#6ee7b7', 'dark': '#047857'}
+    }
+
+    # ==========================================
+    # BAGIAN 1: REVENUE (Grouped Bar - Total Only)
+    # ==========================================
     with st.container(border=True):
         st.subheader("📈 Realisasi Revenue & Pertumbuhan per Cabang")
-        
-        fig = go.Figure()
-        colors = {
-            'Jatirahayu': '#3b82f6', 'Cikampek': '#8b5cf6', 
-            'Citeureup': '#6366f1', 'Ciputat': '#10b981'
-        }
+        fig_rev = go.Figure()
+        for i, cabang in enumerate(selected_cabang):
+            branch_df = filtered_df[filtered_df['Cabang'] == cabang].copy()
+            nominal_labels = branch_df['Actual Revenue (Total)'].apply(lambda x: f"<b>{x/1e9:.2f}M</b>" if x > 0 else "")
+            growth_labels = [f"<b>{'▲' if v >= 0 else '▼'} {abs(v):.1f}%</b>" if pd.notnull(v) else "" for v in branch_df['Rev Growth']]
+            growth_colors = ["#059669" if v >= 0 else "#dc2626" if pd.notnull(v) else "rgba(0,0,0,0)" for v in branch_df['Rev Growth']]
+            
+            fig_rev.add_trace(go.Bar(
+                x=branch_df['Bulan'], y=branch_df['Actual Revenue (Total)'], name=cabang,
+                offsetgroup=cabang, marker_color=colors.get(cabang)['base'],
+                text=nominal_labels, textposition='inside', insidetextanchor='middle', textfont=dict(color='white')
+            ))
+            fig_rev.add_trace(go.Bar(
+                x=branch_df['Bulan'], y=branch_df['Actual Revenue (Total)'], offsetgroup=cabang,
+                text=growth_labels, textposition='outside', textfont=dict(color=growth_colors, size=11),
+                marker_color='rgba(0,0,0,0)', showlegend=False, hoverinfo='skip'
+            ))
 
+        fig_rev.update_layout(barmode='group', height=450, margin=dict(t=50, b=10),
+                              yaxis=dict(range=[0, filtered_df['Actual Revenue (Total)'].max() * 1.35]),
+                              legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        st.plotly_chart(fig_rev, use_container_width=True)
+
+        # Footer Rata-rata Revenue
+        st.markdown("**Rata-rata Revenue (Data Terisi):**")
+        df_rev_ok = filtered_df[filtered_df['Actual Revenue (Total)'] > 0]
+        avg_rev = df_rev_ok.groupby('Cabang')['Actual Revenue (Total)'].mean()
+        cols_rev = st.columns(len(selected_cabang))
+        for idx, cb in enumerate(selected_cabang):
+            if cb in avg_rev:
+                with cols_rev[idx]:
+                    st.markdown(f"<span style='color:{colors.get(cb)['base']}; font-weight:bold;'>● {cb}</span>", unsafe_allow_html=True)
+                    st.write(f"Rp {avg_rev[cb]/1e9:.2f} Miliar")
+
+    st.write("")
+
+    # ==========================================
+    # BAGIAN 2: VOLUME OPT (Stacked Bar - JKN vs Non-JKN)
+    # ==========================================
+    with st.container(border=True):
+        st.subheader("👥 Realisasi Volume OPT (Stacked JKN vs Non-JKN)")
+        fig_vol = go.Figure()
+        
         for i, cabang in enumerate(selected_cabang):
             branch_df = filtered_df[filtered_df['Cabang'] == cabang].copy()
             
-            # Label Nominal (Inside) - Miliar
-            nominal_labels = branch_df['Actual Revenue (Total)'].apply(
-                lambda x: f"<b>{x/1e9:.2f}M</b>" if x > 0 else ""
-            )
+            # Label Growth untuk posisi paling atas
+            growth_labels = [f"<b>{'▲' if v >= 0 else '▼'} {abs(v):.1f}%</b>" if pd.notnull(v) else "" for v in branch_df['Vol Growth']]
+            growth_colors = ["#059669" if v >= 0 else "#dc2626" if pd.notnull(v) else "rgba(0,0,0,0)" for v in branch_df['Vol Growth']]
             
-            # Label Growth (Outside)
-            growth_labels = []
-            growth_colors = []
-            for val in branch_df['Growth']:
-                if pd.isna(val):
-                    growth_labels.append("")
-                    growth_colors.append("rgba(0,0,0,0)")
-                else:
-                    symbol = "▲" if val >= 0 else "▼"
-                    color = "#059669" if val >= 0 else "#dc2626"
-                    growth_labels.append(f"<b>{symbol} {abs(val):.1f}%</b>")
-                    growth_colors.append(color)
+            # Trace 1: Volume OPT Non JKN (Dasar Bar - Warna Terang)
+            fig_vol.add_trace(go.Bar(
+                x=branch_df['Bulan'], y=branch_df['Volume OPT Non JKN'], 
+                name=cabang, legendgroup=cabang, showlegend=True,
+                offsetgroup=cabang, marker_color=colors.get(cabang)['light'],
+                text=branch_df['Volume OPT Non JKN'].apply(lambda x: f"{int(x):,}" if x > 0 else ""),
+                textposition='inside', insidetextanchor='middle', textfont=dict(size=10),
+                hovertemplate=f"<b>{cabang} (Non JKN)</b>: %{{y:,}} Pasien<extra></extra>"
+            ))
             
-            # Trace Bar Utama (Nominal)
-            fig.add_trace(go.Bar(
-                x=branch_df['Bulan'],
-                y=branch_df['Actual Revenue (Total)'],
-                name=cabang,
-                offsetgroup=cabang,
-                marker_color=colors.get(cabang, '#94a3b8'),
-                text=nominal_labels,
-                textposition='inside',
-                insidetextanchor='middle',
-                textfont=dict(color='white', size=11),
-                hovertemplate=f"<b>{cabang}</b><br>Actual: Rp %{{y:,.0f}}<extra></extra>"
+            # Trace 2: Volume OPT JKN (Menumpuk di Atas - Warna Gelap)
+            fig_vol.add_trace(go.Bar(
+                x=branch_df['Bulan'], y=branch_df['Volume OPT JKN'], 
+                name=cabang, legendgroup=cabang, showlegend=False,
+                base=branch_df['Volume OPT Non JKN'], # Teknik manual stacking
+                offsetgroup=cabang, marker_color=colors.get(cabang)['dark'],
+                text=branch_df['Volume OPT JKN'].apply(lambda x: f"{int(x):,}" if x > 0 else ""),
+                textposition='inside', insidetextanchor='middle', textfont=dict(color='white', size=10),
+                hovertemplate=f"<b>{cabang} (JKN)</b>: %{{y:,}} Pasien<br>Total: %{{base + y:,}} Pasien<extra></extra>"
             ))
 
-            # Trace Bar Transparan (Growth)
-            fig.add_trace(go.Bar(
-                x=branch_df['Bulan'],
-                y=branch_df['Actual Revenue (Total)'],
-                offsetgroup=cabang, 
-                text=growth_labels,
-                textposition='outside',
-                textfont=dict(color=growth_colors, size=11),
-                marker_color='rgba(0,0,0,0)',
-                showlegend=False,
-                hoverinfo='skip'
+            # Trace 3: Label Growth (Paling Atas)
+            fig_vol.add_trace(go.Bar(
+                x=branch_df['Bulan'], y=branch_df['Total Volume OPT'], 
+                offsetgroup=cabang, showlegend=False,
+                text=growth_labels, textposition='outside', textfont=dict(color=growth_colors, size=11),
+                marker_color='rgba(0,0,0,0)', hoverinfo='skip'
             ))
 
-        fig.update_layout(
-            barmode='group', 
-            height=500,
-            margin=dict(t=50, b=10),
-            xaxis_title="",
-            yaxis_title="Total Revenue (IDR)",
-            yaxis=dict(range=[0, filtered_df['Actual Revenue (Total)'].max() * 1.35]),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            hovermode="x unified"
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
+        fig_vol.update_layout(barmode='group', height=450, margin=dict(t=50, b=10),
+                              yaxis_title="Jumlah Pasien",
+                              yaxis=dict(range=[0, filtered_df['Total Volume OPT'].max() * 1.35]),
+                              legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        st.plotly_chart(fig_vol, use_container_width=True)
 
-        # --- FOOTER: RATA-RATA REVENUE (DINAMIS) ---
-        st.markdown("---")
-        st.markdown("**Rata-rata Revenue per Bulan (Berdasarkan Data Terisi):**")
-        
-        # LOGIKA PEMBAGI: Hanya menghitung baris yang memiliki nilai > 0
-        df_terisi = filtered_df[filtered_df['Actual Revenue (Total)'] > 0]
-        avg_revenue = df_terisi.groupby('Cabang')['Actual Revenue (Total)'].mean()
-        
-        cols = st.columns(len(selected_cabang))
+        # Footer Rata-rata Volume
+        st.markdown("**Rata-rata Volume OPT (Total):**")
+        df_vol_ok = filtered_df[filtered_df['Total Volume OPT'] > 0]
+        avg_vol = df_vol_ok.groupby('Cabang')['Total Volume OPT'].mean()
+        cols_vol = st.columns(len(selected_cabang))
         for idx, cb in enumerate(selected_cabang):
-            if cb in avg_revenue:
-                val = avg_revenue[cb]
-                # Hitung jumlah bulan terisi untuk info tambahan
-                count_bulan = len(df_terisi[df_terisi['Cabang'] == cb])
-                with cols[idx]:
-                    st.markdown(f"<span style='color:{colors.get(cb, '#888888')}; font-weight:bold;'>● {cb}</span>", unsafe_allow_html=True)
-                    st.write(f"Rp {val/1e9:.2f} Miliar")
-                    st.caption(f"(Rata-rata {count_bulan} bulan)")
+            if cb in avg_vol:
+                with cols_vol[idx]:
+                    st.markdown(f"<span style='color:{colors.get(cb)['base']}; font-weight:bold;'>● {cb}</span>", unsafe_allow_html=True)
+                    st.write(f"{int(avg_vol[cb]):,} Pasien")
 
-    # --- TABEL DETAIL ---
     with st.expander("🔍 Lihat Detail Data Mentah"):
         st.dataframe(filtered_df)
 else:
