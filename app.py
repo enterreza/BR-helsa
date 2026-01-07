@@ -41,21 +41,38 @@ if not df.empty:
     all_cabang = df['Cabang'].unique()
     selected_cabang = st.sidebar.multiselect("Pilih Cabang:", all_cabang, default=all_cabang)
     
-    filtered_df = df[df['Cabang'].isin(selected_cabang)].copy()
-
-    st.title("📊 Dashboard Pertumbuhan & Realisasi Helsa-BR")
-    st.subheader("📈 Realisasi Revenue & Pertumbuhan per Cabang")
-    
+    # Pre-processing Data
     month_order = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
                    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
+    
+    filtered_df = df[df['Cabang'].isin(selected_cabang)].copy()
     filtered_df['Bulan'] = pd.Categorical(filtered_df['Bulan'], categories=month_order, ordered=True)
     filtered_df = filtered_df.sort_values(['Cabang', 'Bulan'])
 
     # Hitung Growth MoM
     filtered_df['Growth'] = filtered_df.groupby('Cabang')['Actual Revenue (Total)'].pct_change() * 100
 
-    fig = go.Figure()
+    # --- HEADER & NARASI RATA-RATA ---
+    st.title("📊 Dashboard Pertumbuhan & Realisasi Helsa-BR")
     
+    # Kalkulasi Rata-rata per Cabang untuk Narasi
+    st.subheader("📝 Ringkasan Performa")
+    avg_revenue = filtered_df.groupby('Cabang')['Actual Revenue (Total)'].mean()
+    
+    # Membuat teks narasi
+    narasi = "Rata-rata pendapatan bulanan untuk periode terpilih adalah: "
+    items = []
+    for cb in selected_cabang:
+        if cb in avg_revenue:
+            val = avg_revenue[cb]
+            items.append(f"**{cb}** (Rp {val/1e9:.2f} Miliar)")
+    
+    st.info(narasi + ", ".join(items) + ".")
+
+    # --- 4. VISUALISASI CHART ---
+    st.subheader("📈 Realisasi Revenue & Pertumbuhan per Cabang")
+    
+    fig = go.Figure()
     colors = {
         'Jatirahayu': '#3b82f6', 'Cikampek': '#8b5cf6', 
         'Citeureup': '#6366f1', 'Ciputat': '#10b981'
@@ -64,10 +81,10 @@ if not df.empty:
     for i, cabang in enumerate(selected_cabang):
         branch_df = filtered_df[filtered_df['Cabang'] == cabang].copy()
         
-        # A. Label Nominal (Dalam Bar) - misal 4.58M
+        # Label Nominal (Inside)
         nominal_labels = branch_df['Actual Revenue (Total)'].apply(lambda x: f"<b>{x/1e9:.2f}M</b>")
         
-        # B. Label Growth (Luar Bar)
+        # Label Growth (Outside)
         growth_labels = []
         growth_colors = []
         for val in branch_df['Growth']:
@@ -80,12 +97,12 @@ if not df.empty:
                 growth_labels.append(f"<b>{symbol} {abs(val):.1f}%</b>")
                 growth_colors.append(color)
         
-        # TRACE 1: Bar Utama untuk Nominal (Inside)
+        # Trace Bar Utama
         fig.add_trace(go.Bar(
             x=branch_df['Bulan'],
             y=branch_df['Actual Revenue (Total)'],
             name=cabang,
-            offsetgroup=cabang, # Mengunci posisi bar per cabang
+            offsetgroup=cabang,
             marker_color=colors.get(cabang, '#94a3b8'),
             text=nominal_labels,
             textposition='inside',
@@ -94,8 +111,7 @@ if not df.empty:
             hovertemplate=f"<b>{cabang}</b><br>Actual: Rp %{{y:,.0f}}<extra></extra>"
         ))
 
-        # TRACE 2: Bar Transparan untuk Growth (Outside)
-        # Offsetgroup yang sama memastikan label ini berada di atas bar yang benar
+        # Trace Bar Transparan (untuk Growth Label)
         fig.add_trace(go.Bar(
             x=branch_df['Bulan'],
             y=branch_df['Actual Revenue (Total)'],
@@ -103,7 +119,7 @@ if not df.empty:
             text=growth_labels,
             textposition='outside',
             textfont=dict(color=growth_colors, size=11),
-            marker_color='rgba(0,0,0,0)', # Transparan
+            marker_color='rgba(0,0,0,0)',
             showlegend=False,
             hoverinfo='skip'
         ))
@@ -111,10 +127,9 @@ if not df.empty:
     fig.update_layout(
         barmode='group', 
         height=600, 
-        margin=dict(t=100),
+        margin=dict(t=80),
         xaxis_title="Periode Bulan",
         yaxis_title="Total Revenue (IDR)",
-        # Memberikan ruang di atas bar agar label tidak terpotong
         yaxis=dict(range=[0, filtered_df['Actual Revenue (Total)'].max() * 1.3]),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         hovermode="x unified"
