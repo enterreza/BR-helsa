@@ -36,7 +36,6 @@ def load_data():
         return pd.DataFrame()
 
 # --- 3. EKSEKUSI LOAD DATA ---
-# Pastikan variabel 'df' didefinisikan di sini agar tidak NameError
 df = load_data()
 
 # --- 4. LOGIKA DASHBOARD ---
@@ -47,13 +46,13 @@ if not df.empty:
     selected_cabang = st.sidebar.multiselect("Pilih Cabang:", all_cabang, default=all_cabang)
     
     # Filter Data
-    filtered_df = df[df['Cabang'].isin(selected_cabang)]
+    filtered_df = df[df['Cabang'].isin(selected_cabang)].copy()
 
     # Judul
     st.title("📊 Dashboard Pertumbuhan & Realisasi Helsa-BR")
     
-    # --- CHART PERTUMBUHAN (Sesuai Permintaan) ---
-    st.subheader("📈 Pertumbuhan Revenue per Cabang 2025")
+    # --- CHART PERTUMBUHAN ---
+    st.subheader("📈 Realisasi Total Revenue & Pertumbuhan per Cabang")
     
     # Pastikan urutan bulan benar
     month_order = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
@@ -61,38 +60,60 @@ if not df.empty:
     filtered_df['Bulan'] = pd.Categorical(filtered_df['Bulan'], categories=month_order, ordered=True)
     filtered_df = filtered_df.sort_values(['Cabang', 'Bulan'])
 
-    # Hitung Growth MoM
+    # Hitung Growth MoM berdasarkan TOTAL Revenue
     filtered_df['Growth'] = filtered_df.groupby('Cabang')['Actual Revenue (Total)'].pct_change() * 100
 
     fig = go.Figure()
-    colors = {'Jatirahayu': '#3b82f6', 'Cikampek': '#8b5cf6', 'Citeureup': '#6366f1', 'Ciputat': '#10b981'}
+    
+    # Warna dasar per Cabang
+    colors = {
+        'Jatirahayu': '#3b82f6', # Biru
+        'Cikampek':   '#8b5cf6', # Ungu
+        'Citeureup':  '#6366f1', # Indigo
+        'Ciputat':    '#10b981'  # Hijau
+    }
 
-    for cabang in selected_cabang:
-        branch_df = filtered_df[filtered_df['Cabang'] == cabang]
+    for i, cabang in enumerate(selected_cabang):
+        branch_df = filtered_df[filtered_df['Cabang'] == cabang].copy()
         
-        # Bar Chart
+        # Siapkan Label Growth untuk diletakkan di atas bar
+        growth_labels = []
+        growth_colors = []
+        for val in branch_df['Growth']:
+            if pd.isna(val):
+                growth_labels.append("")
+                growth_colors.append("rgba(0,0,0,0)")
+            else:
+                symbol = "▲" if val >= 0 else "▼"
+                color = "#059669" if val >= 0 else "#dc2626"
+                growth_labels.append(f"<b>{symbol} {abs(val):.1f}%</b>")
+                growth_colors.append(color)
+        
+        # Trace: Actual Revenue (Total)
         fig.add_trace(go.Bar(
             x=branch_df['Bulan'],
             y=branch_df['Actual Revenue (Total)'],
             name=cabang,
-            marker_color=colors.get(cabang),
-            text=branch_df['Actual Revenue (Total)'].apply(lambda x: f"{x/1e6:.1f}M"),
-            textposition='auto',
+            marker_color=colors.get(cabang, '#94a3b8'),
+            text=growth_labels,
+            textposition='outside',
+            textfont=dict(color=growth_colors, size=11),
+            hovertemplate=f"<b>{cabang}</b><br>Actual: Rp %{{y:,.0f}}<extra></extra>"
         ))
 
-        # Tambahkan Label Growth ▲/▼
-        for i, row in branch_df.iterrows():
-            if pd.notnull(row['Growth']):
-                color = "green" if row['Growth'] >= 0 else "red"
-                symbol = "▲" if row['Growth'] >= 0 else "▼"
-                fig.add_annotation(
-                    x=row['Bulan'], y=row['Actual Revenue (Total)'],
-                    text=f"{symbol} {row['Growth']:.1f}%",
-                    showarrow=False, yshift=25,
-                    font=dict(color=color, size=11), xanchor='center'
-                )
-
-    fig.update_layout(barmode='group', height=500, margin=dict(t=50))
+    # Pengaturan Layout
+    fig.update_layout(
+        barmode='group', 
+        height=600, 
+        margin=dict(t=80),
+        xaxis_title="Bulan",
+        yaxis_title="Total Revenue (IDR)",
+        # Memberikan margin atas agar label pertumbuhan tidak terpotong
+        yaxis=dict(range=[0, filtered_df['Actual Revenue (Total)'].max() * 1.25]),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        hovermode="x unified"
+    )
+    
     st.plotly_chart(fig, use_container_width=True)
 
     # --- TABEL DETAIL ---
