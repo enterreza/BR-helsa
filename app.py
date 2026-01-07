@@ -8,7 +8,7 @@ SHEET_ID = '18Djb0QiE8uMgt_nXljFCZaMKHwii1pMzAtH96zGc_cI'
 SHEET_NAME = 'app_data'
 URL = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}'
 
-st.set_page_config(page_title="Helsa-BR Live Dashboard", layout="wide")
+st.set_page_config(page_title="Helsa-BR Performance Dashboard", layout="wide")
 
 # --- 2. FUNGSI LOAD & CLEAN DATA ---
 @st.cache_data(ttl=300)
@@ -55,16 +55,16 @@ if not df.empty:
 
     st.title("📊 Dashboard Performa Helsa-BR")
     
-    # Mapping Warna (4 Warna Utama dengan variasi Terang/Gelap)
+    # --- PALETTE WARNA PALE KONTRAST ---
     colors = {
-        'Jatirahayu': {'base': '#3b82f6', 'light': '#93c5fd', 'dark': '#1d4ed8'},
-        'Cikampek':   {'base': '#8b5cf6', 'light': '#c4b5fd', 'dark': '#6d28d9'},
-        'Citeureup':  {'base': '#6366f1', 'light': '#a5b4fc', 'dark': '#4338ca'},
-        'Ciputat':    {'base': '#10b981', 'light': '#6ee7b7', 'dark': '#047857'}
+        'Jatirahayu': {'base': '#AEC6CF', 'light': '#D1E1E6', 'dark': '#779ECB'}, # Pale Blue
+        'Cikampek':   {'base': '#FFB7B2', 'light': '#FFD1CF', 'dark': '#E08E88'}, # Pale Pink/Coral
+        'Citeureup':  {'base': '#B2F2BB', 'light': '#D5F9DA', 'dark': '#88C090'}, # Pale Green
+        'Ciputat':    {'base': '#CFC1FF', 'light': '#E1D9FF', 'dark': '#A694FF'}  # Pale Lavender
     }
 
     # ==========================================
-    # BAGIAN 1: REVENUE (Grouped Bar - Total Only)
+    # BAGIAN 1: REVENUE CHART
     # ==========================================
     with st.container(border=True):
         st.subheader("📈 Realisasi Revenue & Pertumbuhan per Cabang")
@@ -78,7 +78,8 @@ if not df.empty:
             fig_rev.add_trace(go.Bar(
                 x=branch_df['Bulan'], y=branch_df['Actual Revenue (Total)'], name=cabang,
                 offsetgroup=cabang, marker_color=colors.get(cabang)['base'],
-                text=nominal_labels, textposition='inside', insidetextanchor='middle', textfont=dict(color='white')
+                text=nominal_labels, textposition='inside', insidetextanchor='middle', 
+                textfont=dict(color='#444444') # Warna teks gelap agar terbaca di warna pale
             ))
             fig_rev.add_trace(go.Bar(
                 x=branch_df['Bulan'], y=branch_df['Actual Revenue (Total)'], offsetgroup=cabang,
@@ -105,7 +106,7 @@ if not df.empty:
     st.write("")
 
     # ==========================================
-    # BAGIAN 2: VOLUME OPT (Stacked Bar - JKN vs Non-JKN)
+    # BAGIAN 2: VOLUME OPT (Stacked JKN vs Non-JKN)
     # ==========================================
     with st.container(border=True):
         st.subheader("👥 Realisasi Volume OPT (Stacked JKN vs Non-JKN)")
@@ -113,33 +114,31 @@ if not df.empty:
         
         for i, cabang in enumerate(selected_cabang):
             branch_df = filtered_df[filtered_df['Cabang'] == cabang].copy()
-            
-            # Label Growth untuk posisi paling atas
             growth_labels = [f"<b>{'▲' if v >= 0 else '▼'} {abs(v):.1f}%</b>" if pd.notnull(v) else "" for v in branch_df['Vol Growth']]
             growth_colors = ["#059669" if v >= 0 else "#dc2626" if pd.notnull(v) else "rgba(0,0,0,0)" for v in branch_df['Vol Growth']]
             
-            # Trace 1: Volume OPT Non JKN (Dasar Bar - Warna Terang)
+            # Trace 1: Volume OPT Non JKN (Warna Terang)
             fig_vol.add_trace(go.Bar(
                 x=branch_df['Bulan'], y=branch_df['Volume OPT Non JKN'], 
                 name=cabang, legendgroup=cabang, showlegend=True,
                 offsetgroup=cabang, marker_color=colors.get(cabang)['light'],
                 text=branch_df['Volume OPT Non JKN'].apply(lambda x: f"{int(x):,}" if x > 0 else ""),
-                textposition='inside', insidetextanchor='middle', textfont=dict(size=10),
+                textposition='inside', insidetextanchor='middle', textfont=dict(size=10, color='#444444'),
                 hovertemplate=f"<b>{cabang} (Non JKN)</b>: %{{y:,}} Pasien<extra></extra>"
             ))
             
-            # Trace 2: Volume OPT JKN (Menumpuk di Atas - Warna Gelap)
+            # Trace 2: Volume OPT JKN (Warna Gelap)
             fig_vol.add_trace(go.Bar(
                 x=branch_df['Bulan'], y=branch_df['Volume OPT JKN'], 
                 name=cabang, legendgroup=cabang, showlegend=False,
-                base=branch_df['Volume OPT Non JKN'], # Teknik manual stacking
+                base=branch_df['Volume OPT Non JKN'],
                 offsetgroup=cabang, marker_color=colors.get(cabang)['dark'],
                 text=branch_df['Volume OPT JKN'].apply(lambda x: f"{int(x):,}" if x > 0 else ""),
                 textposition='inside', insidetextanchor='middle', textfont=dict(color='white', size=10),
                 hovertemplate=f"<b>{cabang} (JKN)</b>: %{{y:,}} Pasien<br>Total: %{{base + y:,}} Pasien<extra></extra>"
             ))
 
-            # Trace 3: Label Growth (Paling Atas)
+            # Trace 3: Label Growth
             fig_vol.add_trace(go.Bar(
                 x=branch_df['Bulan'], y=branch_df['Total Volume OPT'], 
                 offsetgroup=cabang, showlegend=False,
