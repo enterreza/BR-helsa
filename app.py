@@ -3,68 +3,117 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-# 1. Konfigurasi Halaman
-st.set_page_config(page_title="Helsa-BR Performance Dashboard", layout="wide")
+# --- CONFIGURASI DATA SOURCE ---
+SHEET_ID = '18Djb0QiE8uMgt_nXljFCZaMKHwii1pMzAtH96zGc_cI'
+SHEET_NAME = 'app_data'
+# URL khusus untuk menarik sheet berdasarkan nama
+URL = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}'
 
-# 2. Simulasi/Pre-processing Data (Berdasarkan Gambar)
-# Untuk implementasi asli, Anda bisa mengunggah CSV hasil konversi gambar tersebut
-@st.cache_data
-def get_data():
-    # Contoh struktur data yang diekstrak dari gambar Anda
-    data = {
-        'Bulan': ['Januari', 'Januari', 'Februari', 'Februari', 'Maret', 'Maret'],
-        'Cabang': ['JTR', 'CKP', 'JTR', 'CKP', 'JTR', 'CKP'],
-        'Revenue': [4808448030, 3606930137, 4595869086, 3339207043, 4754418522, 3338485790],
-        'Target': [4582359690, 3718951550, 4547766414, 3355596763, 4704099891, 3718951550],
-        'EBITDA': [1358701122, 837308669, 1213814344, 658711010, 1154468261, 658621644],
-        'BOR_JKN': [72.0, 67.0, 63.0, 66.0, 69.0, 63.0]
-    }
-    return pd.DataFrame(data)
+st.set_page_config(page_title="Helsa-BR Live Dashboard", layout="wide")
 
-df = get_data()
+@st.cache_data(ttl=300) # Data refresh setiap 5 menit
+def load_data():
+    try:
+        df = pd.read_csv(URL)
+        
+        # Pembersihan Nama Kolom (menghapus spasi berlebih atau karakter aneh)
+        df.columns = df.columns.str.strip()
+        
+        # Konversi kolom angka (menangani format ribuan jika ada)
+        numeric_cols = [
+            'Target Revenue', 'Actual Revenue (Total)', 'Actual Revenue (Opt)', 
+            'Actual Revenue (Ipt)', 'Volume OPT JKN', 'Volume OPT Non JKN',
+            'Volume IPT JKN', 'Volume IPT Non JKN'
+        ]
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        
+        return df
+    except Exception as e:
+        st.error(f"Gagal memuat sheet '{SHEET_NAME}': {e}")
+        return pd.DataFrame()
 
-# 3. Sidebar - Filter
-st.sidebar.header("Filter Dashboard")
-selected_cabang = st.sidebar.multiselect("Pilih Cabang:", df['Cabang'].unique(), default=df['Cabang'].unique())
+# Load Data
+df = load_data()
 
-filtered_df = df[df['Cabang'].isin(selected_cabang)]
+if not df.empty:
+    # --- SIDEBAR ---
+    st.sidebar.header("🕹️ Control Panel")
+    
+    # Filter Cabang
+    all_cabang = df['Cabang'].unique()
+    selected_cabang = st.sidebar.multiselect("Pilih Cabang:", all_cabang, default=all_cabang)
+    
+    # Filter Bulan
+    all_bulan = df['Bulan'].unique()
+    selected_bulan = st.sidebar.multiselect("Pilih Bulan:", all_bulan, default=all_bulan)
 
-# 4. Header & KPI Utama
-st.title("🏥 Dashboard Realisasi Operasional & Keuangan")
-st.markdown("Visualisasi performa bulanan berdasarkan data laporan Helsa-BR 2025.")
+    # Filter Data berdasarkan pilihan user
+    filtered_df = df[(df['Cabang'].isin(selected_cabang)) & (df['Bulan'].isin(selected_bulan))]
 
-col1, col2, col3 = st.columns(3)
-with col1:
-    total_rev = filtered_df['Revenue'].sum()
-    st.metric("Total Revenue (YTD)", f"IDR {total_rev:,.0f}")
-with col2:
-    avg_ebitda = filtered_df['EBITDA'].mean()
-    st.metric("Avg EBITDA", f"IDR {avg_ebitda:,.0f}")
-with col3:
-    avg_bor = filtered_df['BOR_JKN'].mean()
-    st.metric("Avg BOR JKN", f"{avg_bor:.2f}%")
+    # --- HEADER ---
+    st.title("📊 Helsa-BR Performance Dashboard")
+    st.info(f"📍 Menampilkan data dari sheet: **{SHEET_NAME}**")
 
-# 5. Visualisasi Timeline Performa (Revenue vs Target)
-st.subheader("📈 Timeline Pencapaian Revenue vs Target")
-fig_rev = go.Figure()
+    # --- ROW 1: METRIK UTAMA ---
+    col1, col2, col3, col4 = st.columns(4)
+    
+    total_rev = filtered_df['Actual Revenue (Total)'].sum()
+    total_tar = filtered_df['Target Revenue'].sum()
+    ach = (total_rev / total_tar * 100) if total_tar > 0 else 0
+    
+    col1.metric("Actual Revenue", f"Rp {total_rev:,.0f}")
+    col2.metric("Target Revenue", f"Rp {total_tar:,.0f}")
+    col3.metric("% Achievement", f"{ach:.1f}%", delta=f"{ach-100:.1f}%")
+    col4.metric("Total Pasien (Opt+Ipt)", f"{filtered_df[['Volume OPT JKN', 'Volume OPT Non JKN', 'Volume IPT JKN', 'Volume IPT Non JKN']].sum().sum():,.0f}")
 
-for cabang in selected_cabang:
-    branch_data = filtered_df[filtered_df['Cabang'] == cabang]
-    fig_rev.add_trace(go.Bar(x=branch_data['Bulan'], y=branch_data['Revenue'], name=f"Revenue {cabang}"))
-    fig_rev.add_trace(go.Scatter(x=branch_data['Bulan'], y=branch_data['Target'], name=f"Target {cabang}", mode='lines+markers'))
+    st.divider()
 
-fig_rev.update_layout(barmode='group', hovermode="x unified")
-st.plotly_chart(fig_rev, use_container_width=True)
+    # --- ROW 2: CHART TIMELINE ---
+    st.subheader("📈 Tren Realisasi vs Target Bulanan")
+    
+    # Pastikan urutan bulan sesuai kalender (Jan-Des)
+    month_order = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
+                   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
+    
+    timeline_df = filtered_df.groupby('Bulan')[['Actual Revenue (Total)', 'Target Revenue']].sum().reset_index()
+    timeline_df['Bulan'] = pd.Categorical(timeline_df['Bulan'], categories=month_order, ordered=True)
+    timeline_df = timeline_df.sort_values('Bulan')
 
-# 6. Detail Operasional (Misal: BOR & Volume)
-col_left, col_right = st.columns(2)
+    fig_timeline = go.Figure()
+    fig_timeline.add_trace(go.Bar(x=timeline_df['Bulan'], y=timeline_df['Actual Revenue (Total)'], name='Actual', marker_color='#10b981'))
+    fig_timeline.add_trace(go.Scatter(x=timeline_df['Bulan'], y=timeline_df['Target Revenue'], name='Target', line=dict(color='#ef4444', width=3)))
+    
+    fig_timeline.update_layout(height=400, margin=dict(l=20, r=20, t=20, b=20))
+    st.plotly_chart(fig_timeline, use_container_width=True)
 
-with col_left:
-    st.subheader("📉 Tren EBITDA per Bulan")
-    fig_ebitda = px.line(filtered_df, x="Bulan", y="EBITDA", color="Cabang", markers=True)
-    st.plotly_chart(fig_ebitda, use_container_width=True)
+    # --- ROW 3: VOLUME & PROPORSI ---
+    c1, c2 = st.columns(2)
+    
+    with c1:
+        st.subheader("🏢 Revenue per Cabang")
+        fig_pie = px.pie(filtered_df, values='Actual Revenue (Total)', names='Cabang', hole=0.4)
+        st.plotly_chart(fig_pie, use_container_width=True)
+        
+    with c2:
+        st.subheader("👥 Volume Pasien JKN vs Non-JKN")
+        # Menjumlahkan total JKN vs Non-JKN
+        jkn_total = filtered_df[['Volume OPT JKN', 'Volume IPT JKN']].sum().sum()
+        non_jkn_total = filtered_df[['Volume OPT Non JKN', 'Volume IPT Non JKN']].sum().sum()
+        
+        fig_vol = px.bar(
+            x=['JKN', 'Non-JKN'], 
+            y=[jkn_total, non_jkn_total],
+            labels={'x': 'Kategori Pasien', 'y': 'Jumlah Pasien'},
+            color=['JKN', 'Non-JKN'],
+            color_discrete_sequence=['#3b82f6', '#f59e0b']
+        )
+        st.plotly_chart(fig_vol, use_container_width=True)
 
-with col_right:
-    st.subheader("🏨 Bed Occupancy Rate (BOR)")
-    fig_bor = px.bar(filtered_df, x="Bulan", y="BOR_JKN", color="Cabang", barmode="group")
-    st.plotly_chart(fig_bor, use_container_width=True)
+    # --- DATA TABLE ---
+    with st.expander("🔍 Lihat Detail Data Mentah"):
+        st.dataframe(filtered_df, use_container_width=True)
+
+else:
+    st.warning("Data tidak ditemukan atau sheet kosong.")
