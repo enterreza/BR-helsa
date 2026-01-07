@@ -57,19 +57,18 @@ if not df.empty:
     st.title("📊 Dashboard Performa Helsa-BR")
     st.subheader("📈 Realisasi Revenue: Outpatient (Opt) vs Inpatient (Ipt)")
 
-    # --- 4. VISUALISASI STACKED GROUPED BAR ---
+    # --- 4. VISUALISASI STACKED GROUPED BAR (FIXED) ---
+    st.subheader("📈 Realisasi Revenue: Outpatient (Opt) vs Inpatient (Ipt)")
     fig = go.Figure()
 
-    # Warna khusus untuk pembeda Opt dan Ipt
-    # Kita gunakan skema: Opt (Warna Terang), Ipt (Warna Gelap) dari hue yang sama per cabang
     color_map = {
-        'Jatirahayu': {'opt': '#60a5fa', 'ipt': '#1e40af'}, # Biru
-        'Cikampek': {'opt': '#a78bfa', 'ipt': '#5b21b6'},   # Ungu
-        'Citeureup': {'opt': '#818cf8', 'ipt': '#3730a3'},  # Indigo
-        'Ciputat': {'opt': '#34d399', 'ipt': '#065f46'}     # Hijau
+        'Jatirahayu': {'opt': '#60a5fa', 'ipt': '#1e40af'},
+        'Cikampek': {'opt': '#a78bfa', 'ipt': '#5b21b6'},
+        'Citeureup': {'opt': '#818cf8', 'ipt': '#3730a3'},
+        'Ciputat': {'opt': '#34d399', 'ipt': '#065f46'}
     }
 
-    for cabang in selected_cabang:
+    for i, cabang in enumerate(selected_cabang):
         branch_df = filtered_df[filtered_df['Cabang'] == cabang]
         
         # Trace untuk Outpatient (Opt)
@@ -77,7 +76,8 @@ if not df.empty:
             x=branch_df['Bulan'],
             y=branch_df['Actual Revenue (Opt)'],
             name=f"{cabang} (Opt)",
-            stackgroup=cabang, # Ini yang membuat bar menumpuk (stacked) per cabang
+            # Gunakan offsetgroup yang sama untuk Opt & Ipt di cabang yang sama
+            offsetgroup=i, 
             marker_color=color_map.get(cabang, {}).get('opt', '#94a3b8'),
             hovertemplate='%{x}<br>Opt: Rp %{y:,.0f}<extra></extra>'
         ))
@@ -87,13 +87,15 @@ if not df.empty:
             x=branch_df['Bulan'],
             y=branch_df['Actual Revenue (Ipt)'],
             name=f"{cabang} (Ipt)",
-            stackgroup=cabang,
+            # Menentukan 'base' agar Ipt menumpuk di atas Opt secara manual (lebih stabil)
+            base=branch_df['Actual Revenue (Opt)'],
+            offsetgroup=i,
             marker_color=color_map.get(cabang, {}).get('ipt', '#475569'),
             hovertemplate='%{x}<br>Ipt: Rp %{y:,.0f}<extra></extra>'
         ))
 
         # Tambahkan Label Growth ▲/▼ di atas Total
-        for i, row in branch_df.iterrows():
+        for _, row in branch_df.iterrows():
             if pd.notnull(row['Growth']):
                 color = "#059669" if row['Growth'] >= 0 else "#dc2626"
                 symbol = "▲" if row['Growth'] >= 0 else "▼"
@@ -101,12 +103,13 @@ if not df.empty:
                     x=row['Bulan'], y=row['Actual Revenue (Total)'],
                     text=f"{symbol} {row['Growth']:.1f}%",
                     showarrow=False, yshift=15,
-                    font=dict(color=color, size=10, bordercolor=color),
+                    font=dict(color=color, size=10),
                     xanchor='center'
                 )
 
     fig.update_layout(
-        barmode='group', # Tetap grouped agar antar cabang bersebelahan
+        # Barmode 'group' dikombinasikan dengan offsetgroup akan membuat tumpukan yang rapi
+        barmode='group',
         height=600,
         xaxis_title="Periode Bulan",
         yaxis_title="Revenue (IDR)",
