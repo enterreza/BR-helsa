@@ -25,6 +25,7 @@ def load_data():
         
         for col in numeric_cols:
             if col in raw_df.columns:
+                # Membersihkan karakter non-angka
                 raw_df[col] = raw_df[col].astype(str).str.replace(r'[^\d]', '', regex=True)
                 raw_df[col] = pd.to_numeric(raw_df[col], errors='coerce').fillna(0)
         
@@ -56,7 +57,6 @@ if not df.empty:
     st.title("📊 Dashboard Pertumbuhan & Realisasi Helsa-BR")
     
     # --- 4. VISUALISASI CHART ---
-    # Container digunakan untuk membungkus Chart dan Rata-rata agar terlihat menyatu
     with st.container(border=True):
         st.subheader("📈 Realisasi Revenue & Pertumbuhan per Cabang")
         
@@ -69,8 +69,10 @@ if not df.empty:
         for i, cabang in enumerate(selected_cabang):
             branch_df = filtered_df[filtered_df['Cabang'] == cabang].copy()
             
-            # Label Nominal (Inside)
-            nominal_labels = branch_df['Actual Revenue (Total)'].apply(lambda x: f"<b>{x/1e9:.2f}M</b>")
+            # Label Nominal (Inside) - Miliar
+            nominal_labels = branch_df['Actual Revenue (Total)'].apply(
+                lambda x: f"<b>{x/1e9:.2f}M</b>" if x > 0 else ""
+            )
             
             # Label Growth (Outside)
             growth_labels = []
@@ -85,7 +87,7 @@ if not df.empty:
                     growth_labels.append(f"<b>{symbol} {abs(val):.1f}%</b>")
                     growth_colors.append(color)
             
-            # Trace Bar Utama
+            # Trace Bar Utama (Nominal)
             fig.add_trace(go.Bar(
                 x=branch_df['Bulan'],
                 y=branch_df['Actual Revenue (Total)'],
@@ -99,7 +101,7 @@ if not df.empty:
                 hovertemplate=f"<b>{cabang}</b><br>Actual: Rp %{{y:,.0f}}<extra></extra>"
             ))
 
-            # Trace Bar Transparan (untuk Growth Label)
+            # Trace Bar Transparan (Growth)
             fig.add_trace(go.Bar(
                 x=branch_df['Bulan'],
                 y=branch_df['Actual Revenue (Total)'],
@@ -114,33 +116,35 @@ if not df.empty:
 
         fig.update_layout(
             barmode='group', 
-            height=500, # Tinggi dikurangi sedikit agar pas dengan footer
-            margin=dict(t=50, b=20),
+            height=500,
+            margin=dict(t=50, b=10),
             xaxis_title="",
             yaxis_title="Total Revenue (IDR)",
-            yaxis=dict(range=[0, filtered_df['Actual Revenue (Total)'].max() * 1.3]),
+            yaxis=dict(range=[0, filtered_df['Actual Revenue (Total)'].max() * 1.35]),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             hovermode="x unified"
         )
         
         st.plotly_chart(fig, use_container_width=True)
 
-        # --- FOOTER: RATA-RATA REVENUE PER CABANG ---
+        # --- FOOTER: RATA-RATA REVENUE (DINAMIS) ---
         st.markdown("---")
-        st.markdown("**Rata-rata Revenue per Bulan:**")
+        st.markdown("**Rata-rata Revenue per Bulan (Berdasarkan Data Terisi):**")
         
-        # Kalkulasi rata-rata
-        avg_revenue = filtered_df.groupby('Cabang')['Actual Revenue (Total)'].mean()
+        # LOGIKA PEMBAGI: Hanya menghitung baris yang memiliki nilai > 0
+        df_terisi = filtered_df[filtered_df['Actual Revenue (Total)'] > 0]
+        avg_revenue = df_terisi.groupby('Cabang')['Actual Revenue (Total)'].mean()
         
-        # Menampilkan dalam bentuk kolom agar sejajar horizontal
         cols = st.columns(len(selected_cabang))
         for idx, cb in enumerate(selected_cabang):
             if cb in avg_revenue:
                 val = avg_revenue[cb]
+                # Hitung jumlah bulan terisi untuk info tambahan
+                count_bulan = len(df_terisi[df_terisi['Cabang'] == cb])
                 with cols[idx]:
-                    # Menampilkan metrik kecil dengan warna sesuai chart
                     st.markdown(f"<span style='color:{colors.get(cb, '#888888')}; font-weight:bold;'>● {cb}</span>", unsafe_allow_html=True)
                     st.write(f"Rp {val/1e9:.2f} Miliar")
+                    st.caption(f"(Rata-rata {count_bulan} bulan)")
 
     # --- TABEL DETAIL ---
     with st.expander("🔍 Lihat Detail Data Mentah"):
