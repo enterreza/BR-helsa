@@ -9,7 +9,7 @@ SHEET_NAME = 'app_data'
 # URL khusus untuk menarik sheet berdasarkan nama
 URL = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}'
 
-st.set_page_config(page_title="Helsa-BR Live Dashboard", layout="wide")
+st.set_page_config(page_title="Helsa Business Review", layout="wide")
 
 @st.cache_data(ttl=300) # Data refresh setiap 5 menit
 def load_data():
@@ -53,8 +53,8 @@ if not df.empty:
     filtered_df = df[(df['Cabang'].isin(selected_cabang)) & (df['Bulan'].isin(selected_bulan))]
 
     # --- HEADER ---
-    st.title("📊 Helsa-BR Performance Dashboard")
-    st.info(f"📍 Menampilkan data dari sheet: **{SHEET_NAME}**")
+    st.title("📊 Helsa Business Review Performance Dashboard")
+    # st.info(f"📍 Menampilkan data dari sheet: **{SHEET_NAME}**")
 
     # --- ROW 1: METRIK UTAMA ---
     col1, col2, col3, col4 = st.columns(4)
