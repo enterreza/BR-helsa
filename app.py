@@ -52,91 +52,97 @@ if not df.empty:
     # Hitung Growth MoM
     filtered_df['Growth'] = filtered_df.groupby('Cabang')['Actual Revenue (Total)'].pct_change() * 100
 
-    # --- HEADER & NARASI RATA-RATA ---
+    # --- HEADER ---
     st.title("📊 Dashboard Pertumbuhan & Realisasi Helsa-BR")
     
-    # Kalkulasi Rata-rata per Cabang untuk Narasi
-    st.subheader("📝 Ringkasan Performa")
-    avg_revenue = filtered_df.groupby('Cabang')['Actual Revenue (Total)'].mean()
-    
-    # Membuat teks narasi
-    narasi = "Rata-rata pendapatan bulanan untuk periode terpilih adalah: "
-    items = []
-    for cb in selected_cabang:
-        if cb in avg_revenue:
-            val = avg_revenue[cb]
-            items.append(f"**{cb}** (Rp {val/1e9:.2f} Miliar)")
-    
-    st.info(narasi + ", ".join(items) + ".")
-
     # --- 4. VISUALISASI CHART ---
-    st.subheader("📈 Realisasi Revenue & Pertumbuhan per Cabang")
-    
-    fig = go.Figure()
-    colors = {
-        'Jatirahayu': '#3b82f6', 'Cikampek': '#8b5cf6', 
-        'Citeureup': '#6366f1', 'Ciputat': '#10b981'
-    }
-
-    for i, cabang in enumerate(selected_cabang):
-        branch_df = filtered_df[filtered_df['Cabang'] == cabang].copy()
+    # Container digunakan untuk membungkus Chart dan Rata-rata agar terlihat menyatu
+    with st.container(border=True):
+        st.subheader("📈 Realisasi Revenue & Pertumbuhan per Cabang")
         
-        # Label Nominal (Inside)
-        nominal_labels = branch_df['Actual Revenue (Total)'].apply(lambda x: f"<b>{x/1e9:.2f}M</b>")
+        fig = go.Figure()
+        colors = {
+            'Jatirahayu': '#3b82f6', 'Cikampek': '#8b5cf6', 
+            'Citeureup': '#6366f1', 'Ciputat': '#10b981'
+        }
+
+        for i, cabang in enumerate(selected_cabang):
+            branch_df = filtered_df[filtered_df['Cabang'] == cabang].copy()
+            
+            # Label Nominal (Inside)
+            nominal_labels = branch_df['Actual Revenue (Total)'].apply(lambda x: f"<b>{x/1e9:.2f}M</b>")
+            
+            # Label Growth (Outside)
+            growth_labels = []
+            growth_colors = []
+            for val in branch_df['Growth']:
+                if pd.isna(val):
+                    growth_labels.append("")
+                    growth_colors.append("rgba(0,0,0,0)")
+                else:
+                    symbol = "▲" if val >= 0 else "▼"
+                    color = "#059669" if val >= 0 else "#dc2626"
+                    growth_labels.append(f"<b>{symbol} {abs(val):.1f}%</b>")
+                    growth_colors.append(color)
+            
+            # Trace Bar Utama
+            fig.add_trace(go.Bar(
+                x=branch_df['Bulan'],
+                y=branch_df['Actual Revenue (Total)'],
+                name=cabang,
+                offsetgroup=cabang,
+                marker_color=colors.get(cabang, '#94a3b8'),
+                text=nominal_labels,
+                textposition='inside',
+                insidetextanchor='middle',
+                textfont=dict(color='white', size=11),
+                hovertemplate=f"<b>{cabang}</b><br>Actual: Rp %{{y:,.0f}}<extra></extra>"
+            ))
+
+            # Trace Bar Transparan (untuk Growth Label)
+            fig.add_trace(go.Bar(
+                x=branch_df['Bulan'],
+                y=branch_df['Actual Revenue (Total)'],
+                offsetgroup=cabang, 
+                text=growth_labels,
+                textposition='outside',
+                textfont=dict(color=growth_colors, size=11),
+                marker_color='rgba(0,0,0,0)',
+                showlegend=False,
+                hoverinfo='skip'
+            ))
+
+        fig.update_layout(
+            barmode='group', 
+            height=500, # Tinggi dikurangi sedikit agar pas dengan footer
+            margin=dict(t=50, b=20),
+            xaxis_title="",
+            yaxis_title="Total Revenue (IDR)",
+            yaxis=dict(range=[0, filtered_df['Actual Revenue (Total)'].max() * 1.3]),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            hovermode="x unified"
+        )
         
-        # Label Growth (Outside)
-        growth_labels = []
-        growth_colors = []
-        for val in branch_df['Growth']:
-            if pd.isna(val):
-                growth_labels.append("")
-                growth_colors.append("rgba(0,0,0,0)")
-            else:
-                symbol = "▲" if val >= 0 else "▼"
-                color = "#059669" if val >= 0 else "#dc2626"
-                growth_labels.append(f"<b>{symbol} {abs(val):.1f}%</b>")
-                growth_colors.append(color)
+        st.plotly_chart(fig, use_container_width=True)
+
+        # --- FOOTER: RATA-RATA REVENUE PER CABANG ---
+        st.markdown("---")
+        st.markdown("**Rata-rata Revenue per Bulan:**")
         
-        # Trace Bar Utama
-        fig.add_trace(go.Bar(
-            x=branch_df['Bulan'],
-            y=branch_df['Actual Revenue (Total)'],
-            name=cabang,
-            offsetgroup=cabang,
-            marker_color=colors.get(cabang, '#94a3b8'),
-            text=nominal_labels,
-            textposition='inside',
-            insidetextanchor='middle',
-            textfont=dict(color='white', size=11),
-            hovertemplate=f"<b>{cabang}</b><br>Actual: Rp %{{y:,.0f}}<extra></extra>"
-        ))
+        # Kalkulasi rata-rata
+        avg_revenue = filtered_df.groupby('Cabang')['Actual Revenue (Total)'].mean()
+        
+        # Menampilkan dalam bentuk kolom agar sejajar horizontal
+        cols = st.columns(len(selected_cabang))
+        for idx, cb in enumerate(selected_cabang):
+            if cb in avg_revenue:
+                val = avg_revenue[cb]
+                with cols[idx]:
+                    # Menampilkan metrik kecil dengan warna sesuai chart
+                    st.markdown(f"<span style='color:{colors.get(cb, '#888888')}; font-weight:bold;'>● {cb}</span>", unsafe_allow_html=True)
+                    st.write(f"Rp {val/1e9:.2f} Miliar")
 
-        # Trace Bar Transparan (untuk Growth Label)
-        fig.add_trace(go.Bar(
-            x=branch_df['Bulan'],
-            y=branch_df['Actual Revenue (Total)'],
-            offsetgroup=cabang, 
-            text=growth_labels,
-            textposition='outside',
-            textfont=dict(color=growth_colors, size=11),
-            marker_color='rgba(0,0,0,0)',
-            showlegend=False,
-            hoverinfo='skip'
-        ))
-
-    fig.update_layout(
-        barmode='group', 
-        height=600, 
-        margin=dict(t=80),
-        xaxis_title="Periode Bulan",
-        yaxis_title="Total Revenue (IDR)",
-        yaxis=dict(range=[0, filtered_df['Actual Revenue (Total)'].max() * 1.3]),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        hovermode="x unified"
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-
+    # --- TABEL DETAIL ---
     with st.expander("🔍 Lihat Detail Data Mentah"):
         st.dataframe(filtered_df)
 else:
