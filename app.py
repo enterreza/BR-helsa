@@ -8,7 +8,7 @@ SHEET_ID = '18Djb0QiE8uMgt_nXljFCZaMKHwii1pMzAtH96zGc_cI'
 SHEET_NAME = 'app_data'
 URL = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}'
 
-st.set_page_config(page_title="Helsa-BR Live Dashboard", layout="wide")
+st.set_page_config(page_title="Helsa-BR Performance Dashboard", layout="wide")
 
 # --- 2. FUNGSI LOAD & CLEAN DATA ---
 @st.cache_data(ttl=300)
@@ -17,7 +17,7 @@ def load_data():
         raw_df = pd.read_csv(URL)
         raw_df.columns = raw_df.columns.str.strip()
         
-        # Kolom yang harus dikonversi ke angka
+        # Kolom numerik yang harus dibersihkan
         numeric_cols = [
             'Target Revenue', 'Actual Revenue (Total)', 'Actual Revenue (Opt)', 
             'Actual Revenue (Ipt)', 'Volume OPT JKN', 'Volume OPT Non JKN',
@@ -51,21 +51,21 @@ if not df.empty:
     # Judul
     st.title("📊 Dashboard Pertumbuhan & Realisasi Helsa-BR")
     
-    # --- CHART PERTUMBUHAN ---
-    st.subheader("📈 Realisasi Total Revenue & Pertumbuhan per Cabang")
+    # --- CHART PERTUMBUHAN & NOMINAL ---
+    st.subheader("📈 Realisasi Revenue (Nominal) & Pertumbuhan MoM")
     
-    # Pastikan urutan bulan benar
+    # Urutan bulan agar kronologis
     month_order = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
                    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
     filtered_df['Bulan'] = pd.Categorical(filtered_df['Bulan'], categories=month_order, ordered=True)
     filtered_df = filtered_df.sort_values(['Cabang', 'Bulan'])
 
-    # Hitung Growth MoM berdasarkan TOTAL Revenue
+    # Hitung Growth MoM
     filtered_df['Growth'] = filtered_df.groupby('Cabang')['Actual Revenue (Total)'].pct_change() * 100
 
     fig = go.Figure()
     
-    # Warna dasar per Cabang
+    # Warna per Cabang
     colors = {
         'Jatirahayu': '#3b82f6', # Biru
         'Cikampek':   '#8b5cf6', # Ungu
@@ -76,40 +76,52 @@ if not df.empty:
     for i, cabang in enumerate(selected_cabang):
         branch_df = filtered_df[filtered_df['Cabang'] == cabang].copy()
         
-        # Siapkan Label Growth untuk diletakkan di atas bar
-        growth_labels = []
-        growth_colors = []
-        for val in branch_df['Growth']:
-            if pd.isna(val):
-                growth_labels.append("")
-                growth_colors.append("rgba(0,0,0,0)")
-            else:
-                symbol = "▲" if val >= 0 else "▼"
-                color = "#059669" if val >= 0 else "#dc2626"
-                growth_labels.append(f"<b>{symbol} {abs(val):.1f}%</b>")
-                growth_colors.append(color)
+        # 1. Siapkan Label Nominal (e.g., 4.8B atau 4.8M)
+        # Di sini kita bagi 1.000.000.000 untuk format Miliar (M)
+        nominal_labels = branch_df['Actual Revenue (Total)'].apply(lambda x: f"<b>{x/1e9:.2f}M</b>")
         
-        # Trace: Actual Revenue (Total)
+        # 2. Trace: Actual Revenue (Total)
         fig.add_trace(go.Bar(
             x=branch_df['Bulan'],
             y=branch_df['Actual Revenue (Total)'],
             name=cabang,
             marker_color=colors.get(cabang, '#94a3b8'),
-            text=growth_labels,
-            textposition='outside',
-            textfont=dict(color=growth_colors, size=11),
+            # Cantumkan nominal revenue di dalam bar
+            text=nominal_labels,
+            textposition='inside', # Meletakkan angka nominal di dalam batang
+            insidetextanchor='middle',
+            textfont=dict(color='white', size=12),
             hovertemplate=f"<b>{cabang}</b><br>Actual: Rp %{{y:,.0f}}<extra></extra>"
         ))
+
+        # 3. Tambahkan Label Growth (▲/▼) di atas bar menggunakan Anotasi
+        for idx, row in branch_df.iterrows():
+            if pd.notnull(row['Growth']):
+                color = "#059669" if row['Growth'] >= 0 else "#dc2626"
+                symbol = "▲" if row['Growth'] >= 0 else "▼"
+                
+                # Menghitung posisi X yang tepat untuk masing-masing bar dalam grup
+                # (Plotly secara internal membagi grup berdasarkan jumlah cabang)
+                fig.add_annotation(
+                    x=row['Bulan'],
+                    y=row['Actual Revenue (Total)'],
+                    text=f"<b>{symbol} {abs(row['Growth']):.1f}%</b>",
+                    showarrow=False,
+                    yshift=15, # Jarak di atas batang
+                    xshift=(i - (len(selected_cabang)-1)/2) * 20, # Menggeser label agar tepat di atas bar cabangnya
+                    font=dict(color=color, size=11),
+                    xanchor='center'
+                )
 
     # Pengaturan Layout
     fig.update_layout(
         barmode='group', 
-        height=600, 
-        margin=dict(t=80),
-        xaxis_title="Bulan",
+        height=650, 
+        margin=dict(t=100, b=50),
+        xaxis_title="Periode Bulan",
         yaxis_title="Total Revenue (IDR)",
         # Memberikan margin atas agar label pertumbuhan tidak terpotong
-        yaxis=dict(range=[0, filtered_df['Actual Revenue (Total)'].max() * 1.25]),
+        yaxis=dict(range=[0, filtered_df['Actual Revenue (Total)'].max() * 1.3]),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         hovermode="x unified"
     )
