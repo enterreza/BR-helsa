@@ -129,14 +129,21 @@ if not df.empty:
             
             # Trace 2: Volume OPT JKN (Warna Gelap)
             fig_vol.add_trace(go.Bar(
-                x=branch_df['Bulan'], y=branch_df['Volume OPT JKN'], 
-                name=cabang, legendgroup=cabang, showlegend=False,
-                base=branch_df['Volume OPT Non JKN'],
-                offsetgroup=cabang, marker_color=colors.get(cabang)['dark'],
-                text=branch_df['Volume OPT JKN'].apply(lambda x: f"{int(x):,}" if x > 0 else ""),
-                textposition='inside', insidetextanchor='middle', textfont=dict(color='white', size=10),
-                hovertemplate=f"<b>{cabang} (JKN)</b>: %{{y:,}} Pasien<br>Total: %{{base + y:,}} Pasien<extra></extra>"
-            ))
+    x=branch_df['Bulan'], 
+    y=branch_df['Volume OPT JKN'], 
+    name=cabang, 
+    legendgroup=cabang, 
+    showlegend=False,
+    base=branch_df['Volume OPT Non JKN'], 
+    offsetgroup=cabang, 
+    marker_color=colors.get(cabang)['dark'],
+    text=branch_df['Volume OPT JKN'].apply(lambda x: f"{int(x):,}" if x > 0 else ""),
+    textposition='inside', 
+    insidetextanchor='middle', 
+    textfont=dict(color='white', size=10),
+    # PERBAIKAN DI SINI: Gunakan %{y} untuk nilai JKN saja
+    hovertemplate=f"<b>{cabang} (JKN)</b>: %{{y:,}} Pasien<br>Total: %{{base + y:,}} Pasien<extra></extra>"
+))
 
             # Trace 3: Label Growth
             fig_vol.add_trace(go.Bar(
