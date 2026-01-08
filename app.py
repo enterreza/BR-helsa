@@ -8,7 +8,7 @@ SHEET_ID = '18Djb0QiE8uMgt_nXljFCZaMKHwii1pMzAtH96zGc_cI'
 SHEET_NAME = 'app_data'
 URL = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}'
 
-st.set_page_config(page_title="Helsa-BR Live Dashboard", layout="wide")
+st.set_page_config(page_title="Helsa-BR Performance Dashboard", layout="wide")
 
 # --- 2. FUNGSI LOAD & CLEAN DATA ---
 @st.cache_data(ttl=300)
@@ -26,6 +26,7 @@ def load_data():
         
         for col in numeric_cols:
             if col in raw_df.columns:
+                # Membersihkan format teks/uang menjadi angka murni
                 raw_df[col] = raw_df[col].astype(str).str.replace(r'[^\d]', '', regex=True)
                 raw_df[col] = pd.to_numeric(raw_df[col], errors='coerce').fillna(0)
         
@@ -60,7 +61,7 @@ if not df.empty:
     filtered_df['IPT Growth'] = filtered_df.groupby('Cabang')['Total IPT'].pct_change() * 100
     filtered_df['IGD Growth'] = filtered_df.groupby('Cabang')['Total IGD'].pct_change() * 100
 
-    st.title("📊 Dashboard Performa Operasional Helsa-BR")
+    st.title("📊 Dashboard Performa Helsa-BR")
     
     # Palette Warna Pale Kontras
     colors = {
@@ -70,7 +71,7 @@ if not df.empty:
         'Ciputat':    {'base': '#CFC1FF', 'light': '#E1D9FF', 'dark': '#A694FF'}
     }
 
-    # FUNGSI UNTUK MEMBUAT STACKED CHART (OPT, IPT, IGD)
+    # FUNGSI UNTUK MEMBUAT STACKED CHART
     def create_stacked_chart(df_data, title, col_jkn, col_nonjkn, col_total, col_growth, y_label):
         with st.container(border=True):
             st.subheader(title)
@@ -82,7 +83,7 @@ if not df.empty:
                 fig.add_trace(go.Bar(
                     x=branch_df['Bulan'], y=branch_df[col_nonjkn], name=cabang, legendgroup=cabang,
                     offsetgroup=cabang, marker_color=colors.get(cabang)['light'],
-                    customdata=branch_df[col_total],
+                    customdata=branch_df[col_total], # Total Pasien
                     text=branch_df[col_nonjkn].apply(lambda x: f"{int(x):,}" if x > 0 else ""),
                     textposition='inside', insidetextanchor='middle', textfont=dict(size=10, color='#444444'),
                     hovertemplate=f"<b>{cabang} (Non JKN)</b>: %{{y:,}} Pasien<br>Total: %{{customdata:,}} Pasien<extra></extra>"
@@ -91,10 +92,10 @@ if not df.empty:
                 fig.add_trace(go.Bar(
                     x=branch_df['Bulan'], y=branch_df[col_jkn], name=cabang, legendgroup=cabang, showlegend=False,
                     base=branch_df[col_nonjkn], offsetgroup=cabang, marker_color=colors.get(cabang)['dark'],
-                    customdata=branch_df[col_total],
+                    customdata=branch_df[col_total], # Total Pasien
                     text=branch_df[col_jkn].apply(lambda x: f"{int(x):,}" if x > 0 else ""),
                     textposition='inside', insidetextanchor='middle', textfont=dict(color='white', size=10),
-                    # PERBAIKAN: y mengambil data JKN murni, customdata mengambil data Total
+                    # FIX: y untuk JKN saja, customdata untuk Total
                     hovertemplate=f"<b>{cabang} (JKN)</b>: %{{y:,}} Pasien<br>Total: %{{customdata:,}} Pasien<extra></extra>"
                 ))
                 # Trace 3: Label Growth (Paling Atas)
@@ -107,6 +108,7 @@ if not df.empty:
                 ))
 
             fig.update_layout(barmode='group', height=400, margin=dict(t=50, b=10),
+                              yaxis_title=y_label,
                               yaxis=dict(range=[0, df_data[col_total].max() * 1.35]),
                               legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig, use_container_width=True)
