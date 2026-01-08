@@ -66,7 +66,7 @@ if not df.empty:
     for col in ['Actual Revenue (Total)', 'Total OPT', 'Total IPT', 'Total IGD', 'Total IGD to IPT']:
         filtered_df[f'{col}_Growth'] = filtered_df.groupby('Cabang')[col].pct_change() * 100
 
-    st.title("📊 Dashboard Performa Helsa-BR 2025")
+    st.title("📊 Helsa Business Review 2025")
     
     colors = {
         'Jatirahayu': {'base': '#AEC6CF', 'light': '#D1E1E6', 'dark': '#779ECB'},
@@ -152,8 +152,8 @@ if not df.empty:
                     st.markdown(f"**{disp_v(group_total)}**")
 
     # --- EKSEKUSI GRAFIK ---
-    create_stacked_chart(filtered_df, "📈 Realisasi Revenue (Stacked Opt vs Ipt)", 'Actual Revenue (Ipt)', 'Actual Revenue (Opt)', 'Actual Revenue (Total)', 'Actual Revenue (Total)_Growth', "Revenue", is_revenue=True, target_col='Target Revenue')
-    create_stacked_chart(filtered_df, "👥 Volume Outpatient (OPT)", 'Volume OPT JKN', 'Volume OPT Non JKN', 'Total OPT', 'Total OPT_Growth', "Volume OPT")
+    create_stacked_chart(filtered_df, "📈 Realisasi Revenue (Stacked OPT vs IPT)", 'Actual Revenue (Ipt)', 'Actual Revenue (Opt)', 'Actual Revenue (Total)', 'Actual Revenue (Total)_Growth', "Revenue", is_revenue=True, target_col='Target Revenue')
+    create_stacked_chart(filtered_df, "👥 Volume Outpatient (Rajal)", 'Volume OPT JKN', 'Volume OPT Non JKN', 'Total OPT', 'Total OPT_Growth', "Volume OPT")
     create_stacked_chart(filtered_df, "🏥 Volume Inpatient (Ranap)", 'Volume IPT JKN', 'Volume IPT Non JKN', 'Total IPT', 'Total IPT_Growth', "Volume IPT")
     create_stacked_chart(filtered_df, "🚑 Volume IGD", 'Volume IGD JKN', 'Volume IGD Non JKN', 'Total IGD', 'Total IGD_Growth', "Volume IGD")
     create_stacked_chart(filtered_df, "🎯 Volume Konversi IGD ke Rawat Inap (Ranap)", 'Volume IGD to IPT JKN', 'Volume IGD to IPT Non JKN', 'Total IGD to IPT', 'Total IGD to IPT_Growth', "Volume Konversi")
@@ -168,7 +168,7 @@ if not df.empty:
         fig_cr.update_layout(height=400, yaxis_title="Persentase (%)", yaxis=dict(range=[0, 115]), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
         st.plotly_chart(fig_cr, use_container_width=True)
 
-    with st.expander("🔍 Lihat Detail Data Mentah"):
+    with st.expander("🔍 Lihat Detail"):
         st.dataframe(filtered_df)
 else:
     st.warning("Data tidak tersedia atau filter cabang/bulan kosong.")
