@@ -62,6 +62,7 @@ if not df.empty:
 
     st.title("📊 Dashboard Performa Helsa-BR 2025")
     
+    # Palette Warna (base, light, dark)
     colors = {
         'Jatirahayu': {'base': '#AEC6CF', 'light': '#D1E1E6', 'dark': '#779ECB'},
         'Cikampek':   {'base': '#FFB7B2', 'light': '#FFD1CF', 'dark': '#E08E88'},
@@ -84,7 +85,7 @@ if not df.empty:
                     val_str = f"{val/1e9:.2f}M" if is_revenue else f"{int(val):,}"
                     return f"<b>{val_str}</b><br>({cat})"
 
-                # Trace 1: Bottom Segment
+                # Trace 1: Bottom Segment (Opt / Non JKN)
                 fig.add_trace(go.Bar(
                     x=branch_df['Bulan'], y=branch_df[col_bottom], name=cabang, legendgroup=cabang,
                     offsetgroup=cabang, marker_color=colors.get(cabang)['light'],
@@ -94,7 +95,7 @@ if not df.empty:
                     hovertemplate=f"<b>{cabang}</b><br>Total: %{{customdata:,.0f}}<extra></extra>"
                 ))
                 
-                # Trace 2: Top Segment
+                # Trace 2: Top Segment (Ipt / JKN)
                 fig.add_trace(go.Bar(
                     x=branch_df['Bulan'], y=branch_df[col_top], name=cabang, legendgroup=cabang, showlegend=False,
                     base=branch_df[col_bottom], offsetgroup=cabang, marker_color=colors.get(cabang)['dark'],
@@ -108,21 +109,16 @@ if not df.empty:
                 growth_vals = branch_df[col_growth_name]
                 display_labels = []
                 for idx, g_val in enumerate(growth_vals):
-                    # 1. Warna & Simbol Growth
                     symbol = "▲" if g_val >= 0 else "▼"
                     g_color = "#059669" if g_val >= 0 else "#dc2626"
                     g_txt = f"<span style='color:{g_color}'><b>{symbol} {abs(g_val):.1f}%</b></span>"
                     
-                    # 2. Warna Achievement (Jika ada target_col)
                     if target_col and target_col in branch_df:
                         actual = branch_df[col_total].iloc[idx]
                         target = branch_df[target_col].iloc[idx]
                         ach = (actual / target * 100) if target > 0 else 0
-                        
-                        # KONDISI WARNA: Hijau jika >= 100%, Merah jika < 100%
                         ach_color = "#059669" if ach >= 100 else "#dc2626"
                         ach_txt = f"<span style='color:{ach_color}'><b>Ach: {ach:.1f}%</b></span>"
-                        
                         display_labels.append(f"{ach_txt}<br>{g_txt}")
                     else:
                         display_labels.append(g_txt)
@@ -134,17 +130,20 @@ if not df.empty:
                 ))
 
             # Penyesuaian Sumbu Y (B ke M)
-            yaxis_config = dict(title=y_label, range=[0, df_data[col_total].max() * 1.75 if df_data[col_total].max() > 0 else 100])
+            yaxis_config = dict(title=y_label, range=[0, df_data[col_total].max() * 1.8 if df_data[col_total].max() > 0 else 100])
             if is_revenue:
-                fig.update_yaxes(tickvals=np.arange(0, df_data[col_total].max() * 2, 1e9),
-                                 ticktext=[f"{int(v/1e9)}M" for v in np.arange(0, df_data[col_total].max() * 2, 1e9)])
+                # Custom tick vals dan text agar sumbu Y menampilkan satuan M (Miliar)
+                max_val = df_data[col_total].max()
+                step = 1e9 # Step per 1 Miliar
+                ticks = np.arange(0, max_val * 1.9, step)
+                fig.update_yaxes(tickvals=ticks, ticktext=[f"{int(v/1e9)}M" for v in ticks])
 
-            fig.update_layout(barmode='group', height=500, margin=dict(t=110, b=10),
+            fig.update_layout(barmode='group', height=520, margin=dict(t=110, b=10),
                               yaxis=yaxis_config,
                               legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig, use_container_width=True)
             
-            # FOOTER RATA-RATA
+            # --- FOOTER RATA-RATA (DENGAN WARNA DARK) ---
             st.markdown(f"**Rata-rata {y_label} per Bulan:**")
             df_ok = df_data[df_data[col_total] > 0]
             avg_val = df_ok.groupby('Cabang')[col_total].mean()
@@ -153,7 +152,9 @@ if not df.empty:
                 if cb in avg_val:
                     with cols[idx]:
                         val = avg_val[cb]
-                        st.markdown(f"<span style='color:{colors.get(cb)['base']};'>● <b>{cb}</b></span>", unsafe_allow_html=True)
+                        # Menggunakan warna 'dark' agar teks cabang lebih terlihat
+                        branch_color = colors.get(cb)['dark']
+                        st.markdown(f"<span style='color:{branch_color};'>● <b>{cb}</b></span>", unsafe_allow_html=True)
                         st.write(f"Rp {val/1e9:.2f} M" if is_revenue else f"{int(val):,} Pasien")
 
     # --- EKSEKUSI GRAFIK ---
@@ -180,7 +181,7 @@ if not df.empty:
                 line=dict(color=colors.get(cb)['dark'], width=3),
                 hovertemplate=f"<b>{cb}</b><br>CR: %{{y:.2f}}%<extra></extra>"
             ))
-        fig_cr.update_layout(height=400, yaxis_title="Persentase (%)", yaxis=dict(range=[0, 110]),
+        fig_cr.update_layout(height=400, yaxis_title="Persentase (%)", yaxis=dict(range=[0, 115]),
                              legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
         st.plotly_chart(fig_cr, use_container_width=True)
 
