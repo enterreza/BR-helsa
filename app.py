@@ -104,39 +104,42 @@ if not df.empty:
                     hovertemplate=f"<b>{cabang}</b><br>Total: %{{customdata:,.0f}}<extra></extra>"
                 ))
                 
-                # --- LABEL PERSENTASE (Ach & Growth) ---
+                # --- LOGIKA LABEL ATAS (ACHIEVEMENT & GROWTH) ---
                 growth_vals = branch_df[col_growth_name]
                 display_labels = []
                 for idx, g_val in enumerate(growth_vals):
-                    # Label Growth (▲/▼)
+                    # 1. Warna & Simbol Growth
                     symbol = "▲" if g_val >= 0 else "▼"
                     g_color = "#059669" if g_val >= 0 else "#dc2626"
                     g_txt = f"<span style='color:{g_color}'><b>{symbol} {abs(g_val):.1f}%</b></span>"
                     
-                    # Label Achievement (Jika ada target)
+                    # 2. Warna Achievement (Jika ada target_col)
                     if target_col and target_col in branch_df:
                         actual = branch_df[col_total].iloc[idx]
                         target = branch_df[target_col].iloc[idx]
                         ach = (actual / target * 100) if target > 0 else 0
-                        ach_txt = f"<b>Ach: {ach:.1f}%</b>"
-                        # Gabungkan: Ach di atas, Growth di bawah
+                        
+                        # KONDISI WARNA: Hijau jika >= 100%, Merah jika < 100%
+                        ach_color = "#059669" if ach >= 100 else "#dc2626"
+                        ach_txt = f"<span style='color:{ach_color}'><b>Ach: {ach:.1f}%</b></span>"
+                        
                         display_labels.append(f"{ach_txt}<br>{g_txt}")
                     else:
                         display_labels.append(g_txt)
 
                 fig.add_trace(go.Bar(
                     x=branch_df['Bulan'], y=branch_df[col_total], offsetgroup=cabang, showlegend=False,
-                    text=display_labels, textposition='outside', textfont=dict(color='#333', size=11),
+                    text=display_labels, textposition='outside', textfont=dict(size=11),
                     marker_color='rgba(0,0,0,0)', hoverinfo='skip'
                 ))
 
             # Penyesuaian Sumbu Y (B ke M)
-            yaxis_config = dict(title=y_label, range=[0, df_data[col_total].max() * 1.7 if df_data[col_total].max() > 0 else 100])
+            yaxis_config = dict(title=y_label, range=[0, df_data[col_total].max() * 1.75 if df_data[col_total].max() > 0 else 100])
             if is_revenue:
-                fig.update_yaxes(tickvals=np.arange(0, df_data[col_total].max() * 1.8, 1e9),
-                                 ticktext=[f"{int(v/1e9)}M" for v in np.arange(0, df_data[col_total].max() * 1.8, 1e9)])
+                fig.update_yaxes(tickvals=np.arange(0, df_data[col_total].max() * 2, 1e9),
+                                 ticktext=[f"{int(v/1e9)}M" for v in np.arange(0, df_data[col_total].max() * 2, 1e9)])
 
-            fig.update_layout(barmode='group', height=500, margin=dict(t=100, b=10),
+            fig.update_layout(barmode='group', height=500, margin=dict(t=110, b=10),
                               yaxis=yaxis_config,
                               legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig, use_container_width=True)
