@@ -65,6 +65,7 @@ if not df.empty:
         'Ciputat':    {'base': '#CFC1FF', 'light': '#E1D9FF', 'dark': '#A694FF'}
     }
 
+    # FUNGSI UNIVERSAL STACKED BAR
     def create_stacked_chart(df_data, title, col_top, col_bottom, col_total, col_growth_name, y_label, is_revenue=False, target_col=None):
         with st.container(border=True):
             st.subheader(title)
@@ -74,26 +75,69 @@ if not df.empty:
                 branch_df = df_data[df_data['Cabang'] == cabang].copy()
                 if branch_df.empty: continue
                 
+                # Perhitungan Data Hover
+                growth_vals = branch_df[col_growth_name].fillna(0)
+                if target_col and target_col in branch_df:
+                    ach_vals = (branch_df[col_total] / branch_df[target_col] * 100).fillna(0)
+                else:
+                    ach_vals = np.zeros(len(branch_df))
+                
+                # Customdata: [Total, Growth, Achievement]
+                h_customdata = np.stack([branch_df[col_total], growth_vals, ach_vals], axis=-1)
+
                 def fmt_txt(val, cat):
                     if val == 0: return ""
                     val_str = f"{val/1e9:.2f}M" if is_revenue else f"{int(val):,}"
                     return f"<b>{val_str}</b><br>({cat})"
 
-                fig.add_trace(go.Bar(x=branch_df['Bulan'], y=branch_df[col_bottom], name=cabang, legendgroup=cabang, offsetgroup=cabang, marker_color=colors.get(cabang)['light'], customdata=branch_df[col_total], text=branch_df[col_bottom].apply(lambda x: fmt_txt(x, "Opt" if is_revenue else "Non JKN")), textposition='inside', insidetextanchor='middle', textangle=0, textfont=dict(size=9, color='#444444'), hovertemplate=f"<b>{cabang}</b><br>Total: %{{customdata:,.0f}}<extra></extra>"))
-                fig.add_trace(go.Bar(x=branch_df['Bulan'], y=branch_df[col_top], name=cabang, legendgroup=cabang, showlegend=False, base=branch_df[col_bottom], offsetgroup=cabang, marker_color=colors.get(cabang)['dark'], customdata=branch_df[col_total], text=branch_df[col_top].apply(lambda x: fmt_txt(x, "Ipt" if is_revenue else "JKN")), textposition='inside', insidetextanchor='middle', textangle=0, textfont=dict(color='white', size=9), hovertemplate=f"<b>{cabang}</b><br>Total: %{{customdata:,.0f}}<extra></extra>"))
+                # Template Hover Dinamis
+                h_template = f"<b>{cabang}</b><br>Total: %{{customdata[0]:,}}<br>"
+                if target_col:
+                    h_template += "Ach: %{customdata[2]:.1f}%<br>"
+                h_template += "Growth: %{customdata[1]:.1f}%<extra></extra>"
+
+                # Trace 1: Bottom (Opt / Non JKN)
+                fig.add_trace(go.Bar(
+                    x=branch_df['Bulan'], y=branch_df[col_bottom], name=cabang, legendgroup=cabang,
+                    offsetgroup=cabang, marker_color=colors.get(cabang)['light'],
+                    customdata=h_customdata,
+                    text=branch_df[col_bottom].apply(lambda x: fmt_txt(x, "Opt" if is_revenue else "Non JKN")),
+                    textposition='inside', insidetextanchor='middle', textangle=0, textfont=dict(size=9, color='#444444'),
+                    hovertemplate=h_template
+                ))
                 
+                # Trace 2: Top (Ipt / JKN)
+                fig.add_trace(go.Bar(
+                    x=branch_df['Bulan'], y=branch_df[col_top], name=cabang, legendgroup=cabang, showlegend=False,
+                    base=branch_df[col_bottom], offsetgroup=cabang, marker_color=colors.get(cabang)['dark'],
+                    customdata=h_customdata,
+                    text=branch_df[col_top].apply(lambda x: fmt_txt(x, "Ipt" if is_revenue else "JKN")),
+                    textposition='inside', insidetextanchor='middle', textangle=0, textfont=dict(color='white', size=9),
+                    hovertemplate=h_template
+                ))
+                
+                # Trace Label Atas (Font 14)
                 display_labels = []
-                for idx, g_val in enumerate(branch_df[col_growth_name]):
-                    g_txt = f"<span style='color:{('#059669' if g_val >= 0 else '#dc2626')}'><b>{('▲' if g_val >= 0 else '▼')} {abs(g_val):.1f}%</b></span>"
+                for idx, g_val in enumerate(growth_vals):
+                    symbol = "▲" if g_val >= 0 else "▼"
+                    g_color = "#059669" if g_val >= 0 else "#dc2626"
+                    g_txt = f"<span style='color:{g_color}'><b>{symbol} {abs(g_val):.1f}%</b></span>"
+                    
                     if target_col and target_col in branch_df:
-                        ach = (branch_df[col_total].iloc[idx] / branch_df[target_col].iloc[idx] * 100) if branch_df[target_col].iloc[idx] > 0 else 0
-                        ach_txt = f"<span style='color:{('#059669' if ach >= 100 else '#dc2626')}'><b>{ach:.1f}%</b></span>"
+                        ach = ach_vals.iloc[idx]
+                        ach_color = "#059669" if ach >= 100 else "#dc2626"
+                        ach_txt = f"<span style='color:{ach_color}'><b>{ach:.1f}%</b></span>"
                         display_labels.append(f"{ach_txt}<br>{g_txt}")
                     else:
                         display_labels.append(g_txt)
 
-                fig.add_trace(go.Bar(x=branch_df['Bulan'], y=branch_df[col_total], offsetgroup=cabang, showlegend=False, text=display_labels, textposition='outside', textfont=dict(size=14), marker_color='rgba(0,0,0,0)', hoverinfo='skip', cliponaxis=False))
+                fig.add_trace(go.Bar(
+                    x=branch_df['Bulan'], y=branch_df[col_total], offsetgroup=cabang, showlegend=False,
+                    text=display_labels, textposition='outside', textfont=dict(size=14),
+                    marker_color='rgba(0,0,0,0)', hoverinfo='skip', cliponaxis=False
+                ))
 
+            # Autoscale 1.35x
             max_v = df_data[col_total].max() if not df_data.empty else 0
             y_limit = max_v * 1.35 if max_v > 0 else 100
             yaxis_config = dict(title=y_label, range=[0, y_limit])
@@ -104,20 +148,19 @@ if not df.empty:
             fig.update_layout(barmode='group', height=520, margin=dict(t=120, b=10), yaxis=yaxis_config, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig, use_container_width=True)
             
-            # --- SUMMARY FOOTER (LOGIKA BARU GRUP AVG) ---
+            # --- SUMMARY FOOTER ---
             df_ok = df_data[df_data[col_total] > 0]
             if not df_ok.empty:
                 avg_branch = df_ok.groupby('Cabang', observed=True)[col_total].mean()
                 sum_branch = df_ok.groupby('Cabang', observed=True)[col_total].sum()
                 
-                # PERBAIKAN: Grup Avg = Rata-rata dari total grup per bulan
+                # Logika Grup Avg per Bulan
                 monthly_group_totals = df_ok.groupby('Bulan', observed=True)[col_total].sum()
                 group_avg = monthly_group_totals.mean() 
                 group_total = sum_branch.sum()
 
                 def disp_v(val): return f"Rp {val/1e9:.2f} M" if is_revenue else f"{int(val):,} Pasien"
 
-                # Row 1: Rata-rata
                 st.markdown(f"**Rata-rata {y_label} per Bulan ({', '.join(selected_months)}):**")
                 cols = st.columns(len(selected_cabang) + 1)
                 for idx, cb in enumerate(selected_cabang):
@@ -128,7 +171,6 @@ if not df.empty:
                     st.markdown("### 🏆 Grup Avg")
                     st.markdown(f"**{disp_v(group_avg)}**")
 
-                # Row 2: Total
                 st.markdown(f"**Total {y_label} Terpilih:**")
                 cols2 = st.columns(len(selected_cabang) + 1)
                 for idx, cb in enumerate(selected_cabang):
