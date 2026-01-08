@@ -98,12 +98,12 @@ if not df.empty:
                     x=branch_df['Bulan'], y=branch_df[col_top], name=cabang, legendgroup=cabang, showlegend=False,
                     base=branch_df[col_bottom], offsetgroup=cabang, marker_color=colors.get(cabang)['dark'],
                     customdata=branch_df[col_total],
-                    text=branch_df[col_top].apply(lambda x: f"<b>{int(x):,}</b><br>(JKN)" if not is_revenue else f"<b>{x/1e9:.2f}M</b><br>(Ipt)"),
+                    text=branch_df[col_top].apply(lambda x: fmt_txt(x, "Ipt" if is_revenue else "JKN")),
                     textposition='inside', insidetextanchor='middle', textangle=0, textfont=dict(color='white', size=9),
                     hovertemplate=f"<b>{cabang}</b><br>Total: %{{customdata:,.0f}}<extra></extra>"
                 ))
                 
-                # --- LOGIKA LABEL ATAS (ACHIEVEMENT & GROWTH) ---
+                # --- LOGIKA LABEL ATAS ---
                 growth_vals = branch_df[col_growth_name]
                 display_labels = []
                 for idx, g_val in enumerate(growth_vals):
@@ -121,23 +121,18 @@ if not df.empty:
                     else:
                         display_labels.append(g_txt)
 
-                # Trace Label (Pertumbuhan & Pencapaian)
                 fig.add_trace(go.Bar(
                     x=branch_df['Bulan'], y=branch_df[col_total], offsetgroup=cabang, showlegend=False,
                     text=display_labels, textposition='outside', textfont=dict(size=10),
-                    marker_color='rgba(0,0,0,0)', hoverinfo='skip',
-                    cliponaxis=False # Memastikan teks di atas tidak terpotong saat autoscaling
+                    marker_color='rgba(0,0,0,0)', hoverinfo='skip', cliponaxis=False
                 ))
 
-            # --- PERBAIKAN AUTOSCALE (MENGURANGI RUANG KOSONG) ---
+            # Autoscale 1.25x
             max_val = df_data[col_total].max()
-            # Gunakan pengali 1.25 agar label di atas tetap terlihat namun ruang kosong minimal
             y_limit = max_val * 1.25 if max_val > 0 else 100
-            
             yaxis_config = dict(title=y_label, range=[0, y_limit])
             
             if is_revenue:
-                # Custom tick agar sumbu Y menampilkan satuan M (Miliar)
                 step = 1e9 
                 ticks = np.arange(0, y_limit + step, step)
                 fig.update_yaxes(tickvals=ticks, ticktext=[f"{int(v/1e9)}M" for v in ticks])
@@ -147,20 +142,32 @@ if not df.empty:
                               legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig, use_container_width=True)
             
-            # --- FOOTER RATA-RATA (DARK COLOR) ---
-            st.markdown(f"**Rata-rata {y_label} per Bulan:**")
+            # --- FOOTER SUMMARY ---
             df_ok = df_data[df_data[col_total] > 0]
             avg_val = df_ok.groupby('Cabang')[col_total].mean()
-            cols = st.columns(len(selected_cabang))
+            total_sum = df_ok.groupby('Cabang')[col_total].sum()
+            
+            # Row 1: Rata-rata
+            st.markdown(f"**Rata-rata {y_label} per Bulan:**")
+            cols_avg = st.columns(len(selected_cabang))
             for idx, cb in enumerate(selected_cabang):
                 if cb in avg_val:
-                    with cols[idx]:
+                    with cols_avg[idx]:
                         val = avg_val[cb]
-                        branch_color = colors.get(cb)['dark']
-                        st.markdown(f"<span style='color:{branch_color};'>● <b>{cb}</b></span>", unsafe_allow_html=True)
+                        st.markdown(f"<span style='color:{colors.get(cb)['dark']};'>● <b>{cb}</b></span>", unsafe_allow_html=True)
+                        st.write(f"Rp {val/1e9:.2f} M" if is_revenue else f"{int(val):,} Pasien")
+            
+            # Row 2: Total Keseluruhan
+            st.markdown(f"**Total {y_label} Keseluruhan:**")
+            cols_total_sum = st.columns(len(selected_cabang))
+            for idx, cb in enumerate(selected_cabang):
+                if cb in total_sum:
+                    with cols_total_sum[idx]:
+                        val = total_sum[cb]
+                        st.markdown(f"<span style='color:{colors.get(cb)['dark']};'>● <b>{cb}</b></span>", unsafe_allow_html=True)
                         st.write(f"Rp {val/1e9:.2f} M" if is_revenue else f"{int(val):,} Pasien")
 
-    # --- EKSEKUSI GRAFIK ---
+    # --- EKSEKUSI ---
     create_stacked_chart(filtered_df, "📈 Realisasi Revenue (Stacked Opt vs Ipt)", 
                          'Actual Revenue (Ipt)', 'Actual Revenue (Opt)', 'Actual Revenue (Total)', 
                          'Actual Revenue (Total)_Growth', "Revenue", is_revenue=True, target_col='Target Revenue')
@@ -170,7 +177,7 @@ if not df.empty:
     create_stacked_chart(filtered_df, "🚑 Volume IGD", 'Volume IGD JKN', 'Volume IGD Non JKN', 'Total IGD', 'Total IGD_Growth', "Volume IGD")
     create_stacked_chart(filtered_df, "🎯 Volume Konversi IGD ke Rawat Inap (Ranap)", 'Volume IGD to IPT JKN', 'Volume IGD to IPT Non JKN', 'Total IGD to IPT', 'Total IGD to IPT_Growth', "Volume Konversi")
 
-    # 6. Conversion Rate (Hanya Line)
+    # 6. Conversion Rate (Line Only)
     with st.container(border=True):
         st.subheader("📊 Tren Conversion Rate (CR) IGD ke Ranap")
         fig_cr = go.Figure()
@@ -188,7 +195,6 @@ if not df.empty:
                              legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
         st.plotly_chart(fig_cr, use_container_width=True)
 
-    # --- TABEL DETAIL ---
     with st.expander("🔍 Lihat Detail Data Mentah"):
         st.dataframe(filtered_df)
 else:
