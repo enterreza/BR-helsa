@@ -97,14 +97,15 @@ if not df.empty:
                         target = branch_df[target_col].iloc[idx]
                         ach = (actual / target * 100) if target > 0 else 0
                         ach_color = "#059669" if ach >= 100 else "#dc2626"
-                        ach_txt = f"<span style='color:{ach_color}'><b>Ach: {ach:.1f}%</b></span>"
+                        # HANYA TAMPILKAN PERSENTASE TANPA "Ach:"
+                        ach_txt = f"<span style='color:{ach_color}'><b>{ach:.1f}%</b></span>"
                         display_labels.append(f"{ach_txt}<br>{g_txt}")
                     else:
                         display_labels.append(g_txt)
 
                 fig.add_trace(go.Bar(x=branch_df['Bulan'], y=branch_df[col_total], offsetgroup=cabang, showlegend=False, text=display_labels, textposition='outside', textfont=dict(size=14), marker_color='rgba(0,0,0,0)', hoverinfo='skip', cliponaxis=False))
 
-            # Autoscale 1.3x (Extra space for larger font)
+            # Autoscale 1.35x
             max_v = df_data[col_total].max() if not df_data.empty else 0
             y_limit = max_v * 1.35 if max_v > 0 else 100
             yaxis_config = dict(title=y_label, range=[0, y_limit])
