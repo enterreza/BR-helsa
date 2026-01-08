@@ -54,6 +54,7 @@ if not df.empty:
 
     st.title("📊 Dashboard Performa Helsa-BR 2025")
     
+    # Palette Warna Pale Kontras
     colors = {
         'Jatirahayu': {'base': '#AEC6CF', 'light': '#D1E1E6', 'dark': '#779ECB'},
         'Cikampek':   {'base': '#FFB7B2', 'light': '#FFD1CF', 'dark': '#E08E88'},
@@ -75,8 +76,10 @@ if not df.empty:
                     x=branch_df['Bulan'], y=branch_df[col_nonjkn], name=cabang, legendgroup=cabang,
                     offsetgroup=cabang, marker_color=colors.get(cabang)['light'],
                     customdata=branch_df[col_total],
-                    text=branch_df[col_nonjkn].apply(lambda x: f"<b>{int(x):,} Non JKN</b>" if x > 0 else ""),
-                    textposition='inside', insidetextanchor='middle', textfont=dict(size=10, color='#444444'),
+                    # Label 2 baris, horizontal
+                    text=branch_df[col_nonjkn].apply(lambda x: f"<b>{int(x):,}</b><br>(Non JKN)" if x > 0 else ""),
+                    textposition='inside', insidetextanchor='middle', textangle=0,
+                    textfont=dict(size=10, color='#444444'),
                     hovertemplate=f"<b>{cabang}</b><br>Total: %{{customdata:,}} Pasien<extra></extra>"
                 ))
                 
@@ -85,8 +88,10 @@ if not df.empty:
                     x=branch_df['Bulan'], y=branch_df[col_jkn], name=cabang, legendgroup=cabang, showlegend=False,
                     base=branch_df[col_nonjkn], offsetgroup=cabang, marker_color=colors.get(cabang)['dark'],
                     customdata=branch_df[col_total],
-                    text=branch_df[col_jkn].apply(lambda x: f"<b>{int(x):,} JKN</b>" if x > 0 else ""),
-                    textposition='inside', insidetextanchor='middle', textfont=dict(color='white', size=10),
+                    # Label 2 baris, horizontal
+                    text=branch_df[col_jkn].apply(lambda x: f"<b>{int(x):,}</b><br>(JKN)" if x > 0 else ""),
+                    textposition='inside', insidetextanchor='middle', textangle=0,
+                    textfont=dict(color='white', size=10),
                     hovertemplate=f"<b>{cabang}</b><br>Total: %{{customdata:,}} Pasien<extra></extra>"
                 ))
                 
@@ -101,9 +106,9 @@ if not df.empty:
                     marker_color='rgba(0,0,0,0)', hoverinfo='skip'
                 ))
 
-            fig.update_layout(barmode='group', height=450, margin=dict(t=80, b=10),
+            fig.update_layout(barmode='group', height=480, margin=dict(t=80, b=10),
                               yaxis_title=y_label,
-                              yaxis=dict(range=[0, df_data[col_total].max() * 1.5]),
+                              yaxis=dict(range=[0, df_data[col_total].max() * 1.55]),
                               legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig, use_container_width=True)
             
@@ -127,15 +132,14 @@ if not df.empty:
             branch_df = filtered_df[filtered_df['Cabang'] == cabang].copy()
             nominal_labels = branch_df['Actual Revenue (Total)'].apply(lambda x: f"<b>{x/1e9:.2f}M</b>" if x > 0 else "")
             
-            # Trace Utama Revenue
             fig_rev.add_trace(go.Bar(
                 x=branch_df['Bulan'], y=branch_df['Actual Revenue (Total)'], name=cabang,
                 offsetgroup=cabang, marker_color=colors.get(cabang)['base'],
-                text=nominal_labels, textposition='inside', insidetextanchor='middle', textfont=dict(color='#444444'),
-                hovertemplate=f"<b>{cabang}</b>: Rp %{{y:,.0f}}<extra></extra>"
+                text=nominal_labels, textposition='inside', insidetextanchor='middle', textangle=0,
+                textfont=dict(color='#444444'),
+                hovertemplate=f"<b>{cabang}</b><br>Total: Rp %{{y:,.0f}}<extra></extra>"
             ))
             
-            # Trace Growth Revenue
             rev_growth = branch_df['Actual Revenue (Total)_Growth']
             g_labels = [f"<b>{'▲' if v >= 0 else '▼'} {abs(v):.1f}%</b>" if pd.notnull(v) else "" for v in rev_growth]
             g_colors = ["#059669" if v >= 0 else "#dc2626" if pd.notnull(v) else "rgba(0,0,0,0)" for v in rev_growth]
@@ -150,7 +154,6 @@ if not df.empty:
                               yaxis=dict(range=[0, filtered_df['Actual Revenue (Total)'].max() * 1.5]))
         st.plotly_chart(fig_rev, use_container_width=True)
         
-        # Rata-rata Revenue
         st.markdown("**Rata-rata Revenue per Bulan:**")
         df_rev_ok = filtered_df[filtered_df['Actual Revenue (Total)'] > 0]
         avg_rev = df_rev_ok.groupby('Cabang')['Actual Revenue (Total)'].mean()
@@ -161,7 +164,7 @@ if not df.empty:
                     st.markdown(f"<span style='color:{colors.get(cb)['base']};'>● <b>{cb}</b></span>", unsafe_allow_html=True)
                     st.write(f"Rp {avg_rev[cb]/1e9:.2f} M")
 
-    # 2. Volume OPT, Ranap, & IGD
+    # 2. Volume OPT, Ranap (IPT), & IGD
     create_stacked_chart(filtered_df, "👥 Volume Outpatient (OPT)", 'Volume OPT JKN', 'Volume OPT Non JKN', 'Total OPT', 'Total OPT_Growth', "Volume OPT")
     create_stacked_chart(filtered_df, "🏥 Volume Inpatient (Ranap)", 'Volume IPT JKN', 'Volume IPT Non JKN', 'Total IPT', 'Total IPT_Growth', "Volume IPT")
     create_stacked_chart(filtered_df, "🚑 Volume IGD", 'Volume IGD JKN', 'Volume IGD Non JKN', 'Total IGD', 'Total IGD_Growth', "Volume IGD")
@@ -169,4 +172,4 @@ if not df.empty:
     with st.expander("🔍 Lihat Detail Data Mentah"):
         st.dataframe(filtered_df)
 else:
-    st.warning("Menunggu data dari Google Sheets...")
+    st.warning("Data tidak tersedia atau filter cabang kosong.")
