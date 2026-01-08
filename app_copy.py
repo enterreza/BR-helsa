@@ -15,20 +15,15 @@ def load_data():
     try:
         raw_df = pd.read_csv(URL)
         raw_df.columns = raw_df.columns.str.strip()
-        
         numeric_cols = [
             'Target Revenue', 'Actual Revenue (Total)', 'Actual Revenue (Opt)', 'Actual Revenue (Ipt)',
-            'Volume OPT JKN', 'Volume OPT Non JKN',
-            'Volume IPT JKN', 'Volume IPT Non JKN',
-            'Volume IGD JKN', 'Volume IGD Non JKN',
-            'Volume IGD to IPT JKN', 'Volume IGD to IPT Non JKN'
+            'Volume OPT JKN', 'Volume OPT Non JKN', 'Volume IPT JKN', 'Volume IPT Non JKN',
+            'Volume IGD JKN', 'Volume IGD Non JKN', 'Volume IGD to IPT JKN', 'Volume IGD to IPT Non JKN'
         ]
-        
         for col in numeric_cols:
             if col in raw_df.columns:
                 raw_df[col] = raw_df[col].astype(str).str.replace(r'[^\d]', '', regex=True)
                 raw_df[col] = pd.to_numeric(raw_df[col], errors='coerce').fillna(0)
-        
         return raw_df
     except Exception as e:
         st.error(f"Error: {e}")
@@ -37,6 +32,7 @@ def load_data():
 df = load_data()
 
 if not df.empty:
+    # --- FILTER PANEL ---
     st.sidebar.header("🕹️ Filter Panel")
     all_cabang = list(df['Cabang'].unique())
     selected_cabang = st.sidebar.multiselect("Pilih Cabang:", all_cabang, default=all_cabang)
@@ -53,9 +49,7 @@ if not df.empty:
     filtered_df['Total IPT'] = filtered_df['Volume IPT JKN'] + filtered_df['Volume IPT Non JKN']
     filtered_df['Total IGD'] = filtered_df['Volume IGD JKN'] + filtered_df['Volume IGD Non JKN']
     filtered_df['Total IGD to IPT'] = filtered_df['Volume IGD to IPT JKN'] + filtered_df['Volume IGD to IPT Non JKN']
-    
-    filtered_df['CR IGD to IPT'] = np.where(filtered_df['Total IGD'] > 0, 
-                                           (filtered_df['Total IGD to IPT'] / filtered_df['Total IGD']) * 100, 0)
+    filtered_df['CR IGD to IPT'] = np.where(filtered_df['Total IGD'] > 0, (filtered_df['Total IGD to IPT'] / filtered_df['Total IGD']) * 100, 0)
     
     for col in ['Actual Revenue (Total)', 'Total OPT', 'Total IPT', 'Total IGD', 'Total IGD to IPT']:
         filtered_df[f'{col}_Growth'] = filtered_df.groupby('Cabang')[col].pct_change() * 100
@@ -69,7 +63,6 @@ if not df.empty:
         'Ciputat':    {'base': '#CFC1FF', 'light': '#E1D9FF', 'dark': '#A694FF'}
     }
 
-    # FUNGSI UNIVERSAL STACKED BAR
     def create_stacked_chart(df_data, title, col_top, col_bottom, col_total, col_growth_name, y_label, is_revenue=False, target_col=None):
         with st.container(border=True):
             st.subheader(title)
@@ -83,112 +76,83 @@ if not df.empty:
                     val_str = f"{val/1e9:.2f}M" if is_revenue else f"{int(val):,}"
                     return f"<b>{val_str}</b><br>({cat})"
 
-                # Trace 1: Bottom (Opt / Non JKN)
-                fig.add_trace(go.Bar(
-                    x=branch_df['Bulan'], y=branch_df[col_bottom], name=cabang, legendgroup=cabang,
-                    offsetgroup=cabang, marker_color=colors.get(cabang)['light'],
-                    customdata=branch_df[col_total],
-                    text=branch_df[col_bottom].apply(lambda x: fmt_txt(x, "Opt" if is_revenue else "Non JKN")),
-                    textposition='inside', insidetextanchor='middle', textangle=0, textfont=dict(size=9, color='#444444'),
-                    hovertemplate=f"<b>{cabang}</b><br>Total: %{{customdata:,.0f}}<extra></extra>"
-                ))
+                # Bar Segments
+                fig.add_trace(go.Bar(x=branch_df['Bulan'], y=branch_df[col_bottom], name=cabang, legendgroup=cabang, offsetgroup=cabang, marker_color=colors.get(cabang)['light'], customdata=branch_df[col_total], text=branch_df[col_bottom].apply(lambda x: fmt_txt(x, "Opt" if is_revenue else "Non JKN")), textposition='inside', insidetextanchor='middle', textangle=0, textfont=dict(size=9, color='#444444'), hovertemplate=f"<b>{cabang}</b><br>Total: %{{customdata:,.0f}}<extra></extra>"))
+                fig.add_trace(go.Bar(x=branch_df['Bulan'], y=branch_df[col_top], name=cabang, legendgroup=cabang, showlegend=False, base=branch_df[col_bottom], offsetgroup=cabang, marker_color=colors.get(cabang)['dark'], customdata=branch_df[col_total], text=branch_df[col_top].apply(lambda x: fmt_txt(x, "Ipt" if is_revenue else "JKN")), textposition='inside', insidetextanchor='middle', textangle=0, textfont=dict(color='white', size=9), hovertemplate=f"<b>{cabang}</b><br>Total: %{{customdata:,.0f}}<extra></extra>"))
                 
-                # Trace 2: Top (Ipt / JKN)
-                fig.add_trace(go.Bar(
-                    x=branch_df['Bulan'], y=branch_df[col_top], name=cabang, legendgroup=cabang, showlegend=False,
-                    base=branch_df[col_bottom], offsetgroup=cabang, marker_color=colors.get(cabang)['dark'],
-                    customdata=branch_df[col_total],
-                    text=branch_df[col_top].apply(lambda x: f"<b>{int(x):,}</b><br>(JKN)" if not is_revenue else f"<b>{x/1e9:.2f}M</b><br>(Ipt)"),
-                    textposition='inside', insidetextanchor='middle', textangle=0, textfont=dict(color='white', size=9),
-                    hovertemplate=f"<b>{cabang}</b><br>Total: %{{customdata:,.0f}}<extra></extra>"
-                ))
-                
-                # --- LOGIKA LABEL ATAS (ACHIEVEMENT & GROWTH) ---
-                growth_vals = branch_df[col_growth_name]
+                # Labels
                 display_labels = []
-                for idx, g_val in enumerate(growth_vals):
-                    symbol = "▲" if g_val >= 0 else "▼"
-                    g_color = "#059669" if g_val >= 0 else "#dc2626"
-                    g_txt = f"<span style='color:{g_color}'><b>{symbol} {abs(g_val):.1f}%</b></span>"
-                    
+                for idx, g_val in enumerate(branch_df[col_growth_name]):
+                    g_txt = f"<span style='color:{('#059669' if g_val >= 0 else '#dc2626')}'><b>{('▲' if g_val >= 0 else '▼')} {abs(g_val):.1f}%</b></span>"
                     if target_col and target_col in branch_df:
-                        actual = branch_df[col_total].iloc[idx]
-                        target = branch_df[target_col].iloc[idx]
-                        ach = (actual / target * 100) if target > 0 else 0
-                        ach_color = "#059669" if ach >= 100 else "#dc2626"
-                        ach_txt = f"<span style='color:{ach_color}'><b>Ach: {ach:.1f}%</b></span>"
+                        ach = (branch_df[col_total].iloc[idx] / branch_df[target_col].iloc[idx] * 100) if branch_df[target_col].iloc[idx] > 0 else 0
+                        ach_txt = f"<span style='color:{('#059669' if ach >= 100 else '#dc2626')}'><b>Ach: {ach:.1f}%</b></span>"
                         display_labels.append(f"{ach_txt}<br>{g_txt}")
                     else:
                         display_labels.append(g_txt)
 
-                # Trace Label (Pertumbuhan & Pencapaian)
-                fig.add_trace(go.Bar(
-                    x=branch_df['Bulan'], y=branch_df[col_total], offsetgroup=cabang, showlegend=False,
-                    text=display_labels, textposition='outside', textfont=dict(size=10),
-                    marker_color='rgba(0,0,0,0)', hoverinfo='skip',
-                    cliponaxis=False # Memastikan teks di atas tidak terpotong saat autoscaling
-                ))
+                fig.add_trace(go.Bar(x=branch_df['Bulan'], y=branch_df[col_total], offsetgroup=cabang, showlegend=False, text=display_labels, textposition='outside', textfont=dict(size=10), marker_color='rgba(0,0,0,0)', hoverinfo='skip', cliponaxis=False))
 
-            # --- PERBAIKAN AUTOSCALE (MENGURANGI RUANG KOSONG) ---
             max_val = df_data[col_total].max()
-            # Gunakan pengali 1.25 agar label di atas tetap terlihat namun ruang kosong minimal
             y_limit = max_val * 1.25 if max_val > 0 else 100
-            
             yaxis_config = dict(title=y_label, range=[0, y_limit])
-            
             if is_revenue:
-                # Custom tick agar sumbu Y menampilkan satuan M (Miliar)
-                step = 1e9 
-                ticks = np.arange(0, y_limit + step, step)
+                ticks = np.arange(0, y_limit + 1e9, 1e9)
                 fig.update_yaxes(tickvals=ticks, ticktext=[f"{int(v/1e9)}M" for v in ticks])
 
-            fig.update_layout(barmode='group', height=500, margin=dict(t=100, b=10),
-                              yaxis=yaxis_config,
-                              legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+            fig.update_layout(barmode='group', height=500, margin=dict(t=100, b=10), yaxis=yaxis_config, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig, use_container_width=True)
             
-            # --- FOOTER RATA-RATA (DARK COLOR) ---
-            st.markdown(f"**Rata-rata {y_label} per Bulan:**")
+            # --- SUMMARY FOOTER (Cabang + Grand Total Grup) ---
             df_ok = df_data[df_data[col_total] > 0]
-            avg_val = df_ok.groupby('Cabang')[col_total].mean()
-            cols = st.columns(len(selected_cabang))
-            for idx, cb in enumerate(selected_cabang):
-                if cb in avg_val:
-                    with cols[idx]:
-                        val = avg_val[cb]
-                        branch_color = colors.get(cb)['dark']
-                        st.markdown(f"<span style='color:{branch_color};'>● <b>{cb}</b></span>", unsafe_allow_html=True)
-                        st.write(f"Rp {val/1e9:.2f} M" if is_revenue else f"{int(val):,} Pasien")
+            avg_branch = df_ok.groupby('Cabang')[col_total].mean()
+            sum_branch = df_ok.groupby('Cabang')[col_total].sum()
+            
+            group_avg = df_ok[col_total].mean()
+            group_total = df_ok[col_total].sum()
 
-    # --- EKSEKUSI GRAFIK ---
-    create_stacked_chart(filtered_df, "📈 Realisasi Revenue (Stacked Opt vs Ipt)", 
-                         'Actual Revenue (Ipt)', 'Actual Revenue (Opt)', 'Actual Revenue (Total)', 
-                         'Actual Revenue (Total)_Growth', "Revenue", is_revenue=True, target_col='Target Revenue')
-    
+            def display_val(val): return f"Rp {val/1e9:.2f} M" if is_revenue else f"{int(val):,} Pasien"
+
+            # Row 1: Rata-rata
+            st.markdown(f"**Rata-rata {y_label} per Bulan:**")
+            cols = st.columns(len(selected_cabang) + 1)
+            for idx, cb in enumerate(selected_cabang):
+                with cols[idx]:
+                    st.markdown(f"<span style='color:{colors.get(cb)['dark']};'>● <b>{cb}</b></span>", unsafe_allow_html=True)
+                    st.write(display_val(avg_branch.get(cb, 0)))
+            with cols[-1]:
+                st.markdown("### 🏆 Grup Avg")
+                st.markdown(f"**{display_val(group_avg)}**")
+
+            # Row 2: Total Keseluruhan
+            st.markdown(f"**Total {y_label} Keseluruhan:**")
+            cols2 = st.columns(len(selected_cabang) + 1)
+            for idx, cb in enumerate(selected_cabang):
+                with cols2[idx]:
+                    st.markdown(f"<span style='color:{colors.get(cb)['dark']};'>● <b>{cb}</b></span>", unsafe_allow_html=True)
+                    val = sum_branch.get(cb, 0)
+                    suffix = f" <br><small>({(val/group_total*100):.1f}% Kontribusi)</small>" if is_revenue and group_total > 0 else ""
+                    st.markdown(f"{display_val(val)}{suffix}", unsafe_allow_html=True)
+            with cols2[-1]:
+                st.markdown("### 🏛️ Grup Total")
+                st.markdown(f"**{display_val(group_total)}**")
+
+    # --- EKSEKUSI ---
+    create_stacked_chart(filtered_df, "📈 Realisasi Revenue (Stacked Opt vs Ipt)", 'Actual Revenue (Ipt)', 'Actual Revenue (Opt)', 'Actual Revenue (Total)', 'Actual Revenue (Total)_Growth', "Revenue", is_revenue=True, target_col='Target Revenue')
     create_stacked_chart(filtered_df, "👥 Volume Outpatient (OPT)", 'Volume OPT JKN', 'Volume OPT Non JKN', 'Total OPT', 'Total OPT_Growth', "Volume OPT")
     create_stacked_chart(filtered_df, "🏥 Volume Inpatient (Ranap)", 'Volume IPT JKN', 'Volume IPT Non JKN', 'Total IPT', 'Total IPT_Growth', "Volume IPT")
     create_stacked_chart(filtered_df, "🚑 Volume IGD", 'Volume IGD JKN', 'Volume IGD Non JKN', 'Total IGD', 'Total IGD_Growth', "Volume IGD")
     create_stacked_chart(filtered_df, "🎯 Volume Konversi IGD ke Rawat Inap (Ranap)", 'Volume IGD to IPT JKN', 'Volume IGD to IPT Non JKN', 'Total IGD to IPT', 'Total IGD to IPT_Growth', "Volume Konversi")
 
-    # 6. Conversion Rate (Hanya Line)
     with st.container(border=True):
         st.subheader("📊 Tren Conversion Rate (CR) IGD ke Ranap")
         fig_cr = go.Figure()
         for cb in selected_cabang:
             branch_df = filtered_df[filtered_df['Cabang'] == cb]
-            fig_cr.add_trace(go.Scatter(
-                x=branch_df['Bulan'], y=branch_df['CR IGD to IPT'], name=cb,
-                mode='lines+markers+text',
-                text=branch_df['CR IGD to IPT'].apply(lambda x: f"<b>{x:.1f}%</b>" if x > 0 else ""),
-                textposition="top center",
-                line=dict(color=colors.get(cb)['dark'], width=3),
-                hovertemplate=f"<b>{cb}</b><br>CR: %{{y:.2f}}%<extra></extra>"
-            ))
-        fig_cr.update_layout(height=400, yaxis_title="Persentase (%)", yaxis=dict(range=[0, 115]),
-                             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+            fig_cr.add_trace(go.Scatter(x=branch_df['Bulan'], y=branch_df['CR IGD to IPT'], name=cb, mode='lines+markers+text', text=branch_df['CR IGD to IPT'].apply(lambda x: f"<b>{x:.1f}%</b>" if x > 0 else ""), textposition="top center", line=dict(color=colors.get(cb)['dark'], width=3), hovertemplate=f"<b>{cb}</b><br>CR: %{{y:.2f}}%<extra></extra>"))
+        fig_cr.update_layout(height=400, yaxis_title="Persentase (%)", yaxis=dict(range=[0, 115]), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
         st.plotly_chart(fig_cr, use_container_width=True)
 
-    # --- TABEL DETAIL ---
     with st.expander("🔍 Lihat Detail Data Mentah"):
         st.dataframe(filtered_df)
 else:
