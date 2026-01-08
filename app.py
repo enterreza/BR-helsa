@@ -3,12 +3,12 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-# --- 1. KONFIGURASI ---
+# --- 1. KONFIGURASI DATA ---
 SHEET_ID = '18Djb0QiE8uMgt_nXljFCZaMKHwii1pMzAtH96zGc_cI'
 SHEET_NAME = 'app_data'
 URL = f'https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}'
 
-st.set_page_config(page_title="Helsa-BR Performance Dashboard", layout="wide")
+st.set_page_config(page_title="Helsa-BR Live Dashboard", layout="wide")
 
 # --- 2. FUNGSI LOAD & CLEAN DATA ---
 @st.cache_data(ttl=300)
@@ -25,6 +25,7 @@ def load_data():
         
         for col in numeric_cols:
             if col in raw_df.columns:
+                # Membersihkan format teks/uang menjadi angka murni
                 raw_df[col] = raw_df[col].astype(str).str.replace(r'[^\d]', '', regex=True)
                 raw_df[col] = pd.to_numeric(raw_df[col], errors='coerce').fillna(0)
         
@@ -48,7 +49,7 @@ if not df.empty:
     filtered_df['Bulan'] = pd.Categorical(filtered_df['Bulan'], categories=month_order, ordered=True)
     filtered_df = filtered_df.sort_values(['Cabang', 'Bulan'])
 
-    # Perhitungan Total & Growth
+    # Perhitungan Metrik Tambahan
     filtered_df['Total Volume OPT'] = filtered_df['Volume OPT JKN'] + filtered_df['Volume OPT Non JKN']
     filtered_df['Rev Growth'] = filtered_df.groupby('Cabang')['Actual Revenue (Total)'].pct_change() * 100
     filtered_df['Vol Growth'] = filtered_df.groupby('Cabang')['Total Volume OPT'].pct_change() * 100
@@ -92,7 +93,7 @@ if not df.empty:
                               legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
         st.plotly_chart(fig_rev, use_container_width=True)
 
-        st.markdown("**Rata-rata Revenue (Data Terisi):**")
+        st.markdown("**Rata-rata Revenue (Berdasarkan Data Terisi):**")
         df_rev_ok = filtered_df[filtered_df['Actual Revenue (Total)'] > 0]
         avg_rev = df_rev_ok.groupby('Cabang')['Actual Revenue (Total)'].mean()
         cols_rev = st.columns(len(selected_cabang))
@@ -114,13 +115,13 @@ if not df.empty:
         for i, cabang in enumerate(selected_cabang):
             branch_df = filtered_df[filtered_df['Cabang'] == cabang].copy()
             
-            # Hitung Total untuk Hover
+            # Hitung Total Khusus untuk Hover
             branch_df['Total_Hover'] = branch_df['Volume OPT JKN'] + branch_df['Volume OPT Non JKN']
             
             growth_labels = [f"<b>{'▲' if v >= 0 else '▼'} {abs(v):.1f}%</b>" if pd.notnull(v) else "" for v in branch_df['Vol Growth']]
             growth_colors = ["#059669" if v >= 0 else "#dc2626" if pd.notnull(v) else "rgba(0,0,0,0)" for v in branch_df['Vol Growth']]
             
-            # Trace 1: Volume OPT Non JKN (Warna Terang)
+            # Trace 1: Volume OPT Non JKN (Dasar Bar - Warna Terang)
             fig_vol.add_trace(go.Bar(
                 x=branch_df['Bulan'], y=branch_df['Volume OPT Non JKN'], 
                 name=cabang, legendgroup=cabang, showlegend=True,
@@ -128,11 +129,10 @@ if not df.empty:
                 customdata=branch_df['Total_Hover'],
                 text=branch_df['Volume OPT Non JKN'].apply(lambda x: f"{int(x):,}" if x > 0 else ""),
                 textposition='inside', insidetextanchor='middle', textfont=dict(size=10, color='#444444'),
-                # Hover: y untuk Non-JKN, customdata untuk Total
                 hovertemplate=f"<b>{cabang} (Non JKN)</b>: %{{y:,}} Pasien<br>Total: %{{customdata:,}} Pasien<extra></extra>"
             ))
-        
-            # Trace 2: Volume OPT JKN (Warna Gelap)
+            
+            # Trace 2: Volume OPT JKN (Menumpuk di Atas - Warna Gelap)
             fig_vol.add_trace(go.Bar(
                 x=branch_df['Bulan'], y=branch_df['Volume OPT JKN'], 
                 name=cabang, legendgroup=cabang, showlegend=False,
@@ -141,11 +141,11 @@ if not df.empty:
                 customdata=branch_df['Total_Hover'],
                 text=branch_df['Volume OPT JKN'].apply(lambda x: f"{int(x):,}" if x > 0 else ""),
                 textposition='inside', insidetextanchor='middle', textfont=dict(color='white', size=10),
-                # PERBAIKAN: Gunakan %{y} untuk nilai JKN saja dan %{customdata} untuk Total
+                # PERBAIKAN: y untuk JKN saja, customdata untuk Total
                 hovertemplate=f"<b>{cabang} (JKN)</b>: %{{y:,}} Pasien<br>Total: %{{customdata:,}} Pasien<extra></extra>"
             ))
 
-            # Trace 3: Label Growth
+            # Trace 3: Label Growth (Paling Atas)
             fig_vol.add_trace(go.Bar(
                 x=branch_df['Bulan'], y=branch_df['Total Volume OPT'], 
                 offsetgroup=cabang, showlegend=False,
@@ -159,7 +159,7 @@ if not df.empty:
                               legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
         st.plotly_chart(fig_vol, use_container_width=True)
 
-        st.markdown("**Rata-rata Volume OPT (Total):**")
+        st.markdown("**Rata-rata Volume OPT per Bulan (Berdasarkan Data Terisi):**")
         df_vol_ok = filtered_df[filtered_df['Total Volume OPT'] > 0]
         avg_vol = df_vol_ok.groupby('Cabang')['Total Volume OPT'].mean()
         cols_vol = st.columns(len(selected_cabang))
