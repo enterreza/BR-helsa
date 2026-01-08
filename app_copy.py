@@ -16,7 +16,7 @@ def load_data():
         raw_df = pd.read_csv(URL)
         raw_df.columns = raw_df.columns.str.strip()
         numeric_cols = [
-            'Target Revenue', 'Actual Revenue (Total)', 
+            'Target Revenue', 'Actual Revenue (Total)', 'Actual Revenue (Opt)', 'Actual Revenue (Ipt)',
             'Volume OPT JKN', 'Volume OPT Non JKN',
             'Volume IPT JKN', 'Volume IPT Non JKN',
             'Volume IGD JKN', 'Volume IGD Non JKN'
@@ -44,17 +44,17 @@ if not df.empty:
     filtered_df['Bulan'] = pd.Categorical(filtered_df['Bulan'], categories=month_order, ordered=True)
     filtered_df = filtered_df.sort_values(['Cabang', 'Bulan'])
 
-    # Perhitungan Metrik
+    # Perhitungan Metrik Tambahan
     filtered_df['Total OPT'] = filtered_df['Volume OPT JKN'] + filtered_df['Volume OPT Non JKN']
     filtered_df['Total IPT'] = filtered_df['Volume IPT JKN'] + filtered_df['Volume IPT Non JKN']
     filtered_df['Total IGD'] = filtered_df['Volume IGD JKN'] + filtered_df['Volume IGD Non JKN']
     
+    # Perhitungan Growth
     for col in ['Actual Revenue (Total)', 'Total OPT', 'Total IPT', 'Total IGD']:
         filtered_df[f'{col}_Growth'] = filtered_df.groupby('Cabang')[col].pct_change() * 100
 
     st.title("📊 Dashboard Performa Helsa-BR 2025")
     
-    # Palette Warna Pale Kontras
     colors = {
         'Jatirahayu': {'base': '#AEC6CF', 'light': '#D1E1E6', 'dark': '#779ECB'},
         'Cikampek':   {'base': '#FFB7B2', 'light': '#FFD1CF', 'dark': '#E08E88'},
@@ -62,8 +62,8 @@ if not df.empty:
         'Ciputat':    {'base': '#CFC1FF', 'light': '#E1D9FF', 'dark': '#A694FF'}
     }
 
-    # FUNGSI UNTUK MEMBUAT STACKED CHART (OPT, IPT, IGD)
-    def create_stacked_chart(df_data, title, col_jkn, col_nonjkn, col_total, col_growth_name, y_label):
+    # FUNGSI UNTUK MEMBUAT STACKED CHART (Volume & Revenue)
+    def create_stacked_chart(df_data, title, col_top, col_bottom, col_total, col_growth_name, y_label, is_revenue=False):
         with st.container(border=True):
             st.subheader(title)
             fig = go.Figure()
@@ -71,28 +71,32 @@ if not df.empty:
             for i, cabang in enumerate(selected_cabang):
                 branch_df = df_data[df_data['Cabang'] == cabang].copy()
                 
-                # Trace 1: Non JKN (Warna Terang)
+                # Format Label Fungsi
+                def fmt(val, suffix):
+                    if val == 0: return ""
+                    num = f"{val/1e9:.2f}M" if is_revenue else f"{int(val):,}"
+                    return f"<b>{num}</b><br>({suffix})"
+
+                # Trace 1: Bottom Segment (Non-JKN atau Opt)
                 fig.add_trace(go.Bar(
-                    x=branch_df['Bulan'], y=branch_df[col_nonjkn], name=cabang, legendgroup=cabang,
+                    x=branch_df['Bulan'], y=branch_df[col_bottom], name=cabang, legendgroup=cabang,
                     offsetgroup=cabang, marker_color=colors.get(cabang)['light'],
                     customdata=branch_df[col_total],
-                    # Label 2 baris, horizontal
-                    text=branch_df[col_nonjkn].apply(lambda x: f"<b>{int(x):,}</b><br>(Non JKN)" if x > 0 else ""),
+                    text=branch_df[col_bottom].apply(lambda x: fmt(x, "Opt" if is_revenue else "Non JKN")),
                     textposition='inside', insidetextanchor='middle', textangle=0,
-                    textfont=dict(size=10, color='#444444'),
-                    hovertemplate=f"<b>{cabang}</b><br>Total: %{{customdata:,}} Pasien<extra></extra>"
+                    textfont=dict(size=9, color='#444444'),
+                    hovertemplate=f"<b>{cabang}</b><br>Total: %{{customdata:,.0f}}<extra></extra>"
                 ))
                 
-                # Trace 2: JKN (Warna Gelap)
+                # Trace 2: Top Segment (JKN atau Ipt)
                 fig.add_trace(go.Bar(
-                    x=branch_df['Bulan'], y=branch_df[col_jkn], name=cabang, legendgroup=cabang, showlegend=False,
-                    base=branch_df[col_nonjkn], offsetgroup=cabang, marker_color=colors.get(cabang)['dark'],
+                    x=branch_df['Bulan'], y=branch_df[col_top], name=cabang, legendgroup=cabang, showlegend=False,
+                    base=branch_df[col_bottom], offsetgroup=cabang, marker_color=colors.get(cabang)['dark'],
                     customdata=branch_df[col_total],
-                    # Label 2 baris, horizontal
-                    text=branch_df[col_jkn].apply(lambda x: f"<b>{int(x):,}</b><br>(JKN)" if x > 0 else ""),
+                    text=branch_df[col_top].apply(lambda x: fmt(x, "Ipt" if is_revenue else "JKN")),
                     textposition='inside', insidetextanchor='middle', textangle=0,
-                    textfont=dict(color='white', size=10),
-                    hovertemplate=f"<b>{cabang}</b><br>Total: %{{customdata:,}} Pasien<extra></extra>"
+                    textfont=dict(color='white', size=9),
+                    hovertemplate=f"<b>{cabang}</b><br>Total: %{{customdata:,.0f}}<extra></extra>"
                 ))
                 
                 # Trace 3: Label Growth (Paling Atas)
@@ -120,54 +124,32 @@ if not df.empty:
             for idx, cb in enumerate(selected_cabang):
                 if cb in avg_val:
                     with cols[idx]:
+                        val = avg_val[cb]
+                        display_val = f"Rp {val/1e9:.2f} M" if is_revenue else f"{int(val):,} Pasien"
                         st.markdown(f"<span style='color:{colors.get(cb)['base']};'>● <b>{cb}</b></span>", unsafe_allow_html=True)
-                        st.write(f"{int(avg_val[cb]):,} Pasien")
+                        st.write(display_val)
 
-    # --- EKSEKUSI ---
-    # 1. Revenue
-    with st.container(border=True):
-        st.subheader("📈 Realisasi Revenue & Pertumbuhan")
-        fig_rev = go.Figure()
-        for i, cabang in enumerate(selected_cabang):
-            branch_df = filtered_df[filtered_df['Cabang'] == cabang].copy()
-            nominal_labels = branch_df['Actual Revenue (Total)'].apply(lambda x: f"<b>{x/1e9:.2f}M</b>" if x > 0 else "")
-            
-            fig_rev.add_trace(go.Bar(
-                x=branch_df['Bulan'], y=branch_df['Actual Revenue (Total)'], name=cabang,
-                offsetgroup=cabang, marker_color=colors.get(cabang)['base'],
-                text=nominal_labels, textposition='inside', insidetextanchor='middle', textangle=0,
-                textfont=dict(color='#444444'),
-                hovertemplate=f"<b>{cabang}</b><br>Total: Rp %{{y:,.0f}}<extra></extra>"
-            ))
-            
-            rev_growth = branch_df['Actual Revenue (Total)_Growth']
-            g_labels = [f"<b>{'▲' if v >= 0 else '▼'} {abs(v):.1f}%</b>" if pd.notnull(v) else "" for v in rev_growth]
-            g_colors = ["#059669" if v >= 0 else "#dc2626" if pd.notnull(v) else "rgba(0,0,0,0)" for v in rev_growth]
-            
-            fig_rev.add_trace(go.Bar(
-                x=branch_df['Bulan'], y=branch_df['Actual Revenue (Total)'], offsetgroup=cabang, showlegend=False,
-                text=g_labels, textposition='outside', textfont=dict(color=g_colors, size=11),
-                marker_color='rgba(0,0,0,0)', hoverinfo='skip'
-            ))
+    # --- EKSEKUSI DASHBOARD ---
 
-        fig_rev.update_layout(barmode='group', height=400, margin=dict(t=80, b=10),
-                              yaxis=dict(range=[0, filtered_df['Actual Revenue (Total)'].max() * 1.5]))
-        st.plotly_chart(fig_rev, use_container_width=True)
-        
-        st.markdown("**Rata-rata Revenue per Bulan:**")
-        df_rev_ok = filtered_df[filtered_df['Actual Revenue (Total)'] > 0]
-        avg_rev = df_rev_ok.groupby('Cabang')['Actual Revenue (Total)'].mean()
-        cols_rev = st.columns(len(selected_cabang))
-        for idx, cb in enumerate(selected_cabang):
-            if cb in avg_rev:
-                with cols_rev[idx]:
-                    st.markdown(f"<span style='color:{colors.get(cb)['base']};'>● <b>{cb}</b></span>", unsafe_allow_html=True)
-                    st.write(f"Rp {avg_rev[cb]/1e9:.2f} M")
+    # 1. Grafik Revenue (Stacked Opt vs Ipt)
+    create_stacked_chart(filtered_df, "📈 Realisasi Revenue (Stacked Opt vs Ipt)", 
+                         'Actual Revenue (Ipt)', 'Actual Revenue (Opt)', 'Actual Revenue (Total)', 
+                         'Actual Revenue (Total)_Growth', "Revenue (IDR)", is_revenue=True)
 
-    # 2. Volume OPT, Ranap (IPT), & IGD
-    create_stacked_chart(filtered_df, "👥 Volume Outpatient (OPT)", 'Volume OPT JKN', 'Volume OPT Non JKN', 'Total OPT', 'Total OPT_Growth', "Volume OPT")
-    create_stacked_chart(filtered_df, "🏥 Volume Inpatient (Ranap)", 'Volume IPT JKN', 'Volume IPT Non JKN', 'Total IPT', 'Total IPT_Growth', "Volume IPT")
-    create_stacked_chart(filtered_df, "🚑 Volume IGD", 'Volume IGD JKN', 'Volume IGD Non JKN', 'Total IGD', 'Total IGD_Growth', "Volume IGD")
+    # 2. Grafik Volume OPT
+    create_stacked_chart(filtered_df, "👥 Volume Outpatient (OPT)", 
+                         'Volume OPT JKN', 'Volume OPT Non JKN', 'Total OPT', 
+                         'Total OPT_Growth', "Volume OPT")
+
+    # 3. Grafik Volume IPT (Ranap)
+    create_stacked_chart(filtered_df, "🏥 Volume Inpatient (Ranap)", 
+                         'Volume IPT JKN', 'Volume IPT Non JKN', 'Total IPT', 
+                         'Total IPT_Growth', "Volume IPT")
+
+    # 4. Grafik Volume IGD
+    create_stacked_chart(filtered_df, "🚑 Volume IGD", 
+                         'Volume IGD JKN', 'Volume IGD Non JKN', 'Total IGD', 
+                         'Total IGD_Growth', "Volume IGD")
 
     with st.expander("🔍 Lihat Detail Data Mentah"):
         st.dataframe(filtered_df)
