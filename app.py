@@ -91,7 +91,7 @@ if not df.empty:
                 # Trace 2: JKN (Warna Gelap)
                 fig.add_trace(go.Bar(
                     x=branch_df['Bulan'], y=branch_df[col_jkn], name=cabang, legendgroup=cabang, showlegend=False,
-                    base=branch_df[col_nonjkn], offsetgroup=cabang, marker_color=colors.get(cabang)['dark'],
+                    base=branch_df[col_jkn], offsetgroup=cabang, marker_color=colors.get(cabang)['dark'],
                     customdata=branch_df[col_total], # Total Pasien
                     text=branch_df[col_jkn].apply(lambda x: f"{int(x):,}" if x > 0 else ""),
                     textposition='inside', insidetextanchor='middle', textfont=dict(color='white', size=10),
