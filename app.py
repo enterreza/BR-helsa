@@ -16,7 +16,6 @@ def load_data():
         raw_df = pd.read_csv(URL)
         raw_df.columns = raw_df.columns.str.strip()
         
-        # Mapping kolom sesuai data source (IPT kapital)
         numeric_cols = [
             'Target Revenue', 'Actual Revenue (Total)', 'Actual Revenue (Opt)', 'Actual Revenue (Ipt)',
             'Volume OPT JKN', 'Volume OPT Non JKN',
@@ -38,7 +37,6 @@ def load_data():
 df = load_data()
 
 if not df.empty:
-    # --- SIDEBAR FILTER ---
     st.sidebar.header("🕹️ Filter Panel")
     all_cabang = list(df['Cabang'].unique())
     selected_cabang = st.sidebar.multiselect("Pilih Cabang:", all_cabang, default=all_cabang)
@@ -64,7 +62,6 @@ if not df.empty:
 
     st.title("📊 Dashboard Performa Helsa-BR 2025")
     
-    # Palette Warna
     colors = {
         'Jatirahayu': {'base': '#AEC6CF', 'light': '#D1E1E6', 'dark': '#779ECB'},
         'Cikampek':   {'base': '#FFB7B2', 'light': '#FFD1CF', 'dark': '#E08E88'},
@@ -73,7 +70,7 @@ if not df.empty:
     }
 
     # FUNGSI UNIVERSAL STACKED BAR
-    def create_stacked_chart(df_data, title, col_top, col_bottom, col_total, col_growth_name, y_label, is_revenue=False):
+    def create_stacked_chart(df_data, title, col_top, col_bottom, col_total, col_growth_name, y_label, is_revenue=False, target_col=None):
         with st.container(border=True):
             st.subheader(title)
             fig = go.Figure()
@@ -87,7 +84,7 @@ if not df.empty:
                     val_str = f"{val/1e9:.2f}M" if is_revenue else f"{int(val):,}"
                     return f"<b>{val_str}</b><br>({cat})"
 
-                # Bottom Segment (Opt / Non JKN)
+                # Bottom Segment
                 fig.add_trace(go.Bar(
                     x=branch_df['Bulan'], y=branch_df[col_bottom], name=cabang, legendgroup=cabang,
                     offsetgroup=cabang, marker_color=colors.get(cabang)['light'],
@@ -97,7 +94,7 @@ if not df.empty:
                     hovertemplate=f"<b>{cabang}</b><br>Total: %{{customdata:,.0f}}<extra></extra>"
                 ))
                 
-                # Top Segment (Ipt / JKN)
+                # Top Segment
                 fig.add_trace(go.Bar(
                     x=branch_df['Bulan'], y=branch_df[col_top], name=cabang, legendgroup=cabang, showlegend=False,
                     base=branch_df[col_bottom], offsetgroup=cabang, marker_color=colors.get(cabang)['dark'],
@@ -107,7 +104,7 @@ if not df.empty:
                     hovertemplate=f"<b>{cabang}</b><br>Total: %{{customdata:,.0f}}<extra></extra>"
                 ))
                 
-                # Label Pertumbuhan
+                # Growth Label
                 growth_vals = branch_df[col_growth_name]
                 g_labels = [f"<b>{'▲' if v >= 0 else '▼'} {abs(v):.1f}%</b>" if pd.notnull(v) else "" for v in growth_vals]
                 g_colors = ["#059669" if v >= 0 else "#dc2626" if pd.notnull(v) else "rgba(0,0,0,0)" for v in growth_vals]
@@ -117,8 +114,25 @@ if not df.empty:
                     marker_color='rgba(0,0,0,0)', hoverinfo='skip'
                 ))
 
-            fig.update_layout(barmode='group', height=480, margin=dict(t=80, b=10),
-                              yaxis=dict(title=y_label, range=[0, df_data[col_total].max() * 1.55 if df_data[col_total].max() > 0 else 100]),
+                # Indikator Target (Khusus Revenue)
+                if is_revenue and target_col and target_col in branch_df:
+                    fig.add_trace(go.Scatter(
+                        x=branch_df['Bulan'], y=branch_df[target_col], name=f"Target {cabang}",
+                        mode='lines+markers', line=dict(dash='dash', color=colors.get(cabang)['base'], width=2),
+                        hovertemplate=f"<b>Target {cabang}</b>: Rp %{{y:,.0f}}<extra></extra>"
+                    ))
+
+            # Penyesuaian Sumbu Y untuk Revenue (B ke M)
+            yaxis_config = dict(title=y_label, range=[0, df_data[col_total].max() * 1.55 if df_data[col_total].max() > 0 else 100])
+            if is_revenue:
+                yaxis_config['tickformat'] = '.2s'
+                yaxis_config['ticksuffix'] = 'M'
+                # Mengganti 'G' (Giga/Billion) dengan 'M' (Miliar) secara visual pada axis
+                fig.update_yaxes(tickvals=np.arange(0, df_data[col_total].max() * 1.6, 1e9),
+                                 ticktext=[f"{int(v/1e9)}M" for v in np.arange(0, df_data[col_total].max() * 1.6, 1e9)])
+
+            fig.update_layout(barmode='group', height=500, margin=dict(t=80, b=10),
+                              yaxis=yaxis_config,
                               legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig, use_container_width=True)
             
@@ -135,15 +149,16 @@ if not df.empty:
                         st.write(f"Rp {val/1e9:.2f} M" if is_revenue else f"{int(val):,} Pasien")
 
     # --- EKSEKUSI GRAFIK ---
-    create_stacked_chart(filtered_df, "📈 Realisasi Revenue (Stacked Opt vs Ipt)", 'Actual Revenue (Ipt)', 'Actual Revenue (Opt)', 'Actual Revenue (Total)', 'Actual Revenue (Total)_Growth', "Revenue", is_revenue=True)
+    create_stacked_chart(filtered_df, "📈 Realisasi Revenue (Stacked Opt vs Ipt)", 
+                         'Actual Revenue (Ipt)', 'Actual Revenue (Opt)', 'Actual Revenue (Total)', 
+                         'Actual Revenue (Total)_Growth', "Revenue", is_revenue=True, target_col='Target Revenue')
+    
     create_stacked_chart(filtered_df, "👥 Volume Outpatient (OPT)", 'Volume OPT JKN', 'Volume OPT Non JKN', 'Total OPT', 'Total OPT_Growth', "Volume OPT")
     create_stacked_chart(filtered_df, "🏥 Volume Inpatient (Ranap)", 'Volume IPT JKN', 'Volume IPT Non JKN', 'Total IPT', 'Total IPT_Growth', "Volume IPT")
     create_stacked_chart(filtered_df, "🚑 Volume IGD", 'Volume IGD JKN', 'Volume IGD Non JKN', 'Total IGD', 'Total IGD_Growth', "Volume IGD")
-    
-    # 5. Volume IGD to IPT (Hanya Bar)
     create_stacked_chart(filtered_df, "🎯 Volume Konversi IGD ke Rawat Inap (Ranap)", 'Volume IGD to IPT JKN', 'Volume IGD to IPT Non JKN', 'Total IGD to IPT', 'Total IGD to IPT_Growth', "Volume Konversi")
 
-    # 6. Conversion Rate (Terpisah - Hanya Line)
+    # 6. Conversion Rate (Hanya Line)
     with st.container(border=True):
         st.subheader("📊 Tren Conversion Rate (CR) IGD ke Ranap")
         fig_cr = go.Figure()
