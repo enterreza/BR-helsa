@@ -109,55 +109,59 @@ if not df.empty:
     # BAGIAN 2: VOLUME OPT (Stacked JKN vs Non-JKN)
     # ==========================================
     with st.container(border=True):
-        st.subheader("👥 Realisasi Volume OPT (Stacked JKN vs Non-JKN)")
-        fig_vol = go.Figure()
+    st.subheader("👥 Realisasi Volume OPT (Stacked JKN vs Non-JKN)")
+    fig_vol = go.Figure()
+    
+    for i, cabang in enumerate(selected_cabang):
+        branch_df = filtered_df[filtered_df['Cabang'] == cabang].copy()
         
-        for i, cabang in enumerate(selected_cabang):
-            branch_df = filtered_df[filtered_df['Cabang'] == cabang].copy()
-            growth_labels = [f"<b>{'▲' if v >= 0 else '▼'} {abs(v):.1f}%</b>" if pd.notnull(v) else "" for v in branch_df['Vol Growth']]
-            growth_colors = ["#059669" if v >= 0 else "#dc2626" if pd.notnull(v) else "rgba(0,0,0,0)" for v in branch_df['Vol Growth']]
-            
-            # Trace 1: Volume OPT Non JKN (Warna Terang)
-            fig_vol.add_trace(go.Bar(
-                x=branch_df['Bulan'], y=branch_df['Volume OPT Non JKN'], 
-                name=cabang, legendgroup=cabang, showlegend=True,
-                offsetgroup=cabang, marker_color=colors.get(cabang)['light'],
-                text=branch_df['Volume OPT Non JKN'].apply(lambda x: f"{int(x):,}" if x > 0 else ""),
-                textposition='inside', insidetextanchor='middle', textfont=dict(size=10, color='#444444'),
-                hovertemplate=f"<b>{cabang} (Non JKN)</b>: %{{y:,}} Pasien<extra></extra>"
-            ))
-            
-            # Trace 2: Volume OPT JKN (Warna Gelap)
-            fig_vol.add_trace(go.Bar(
-    x=branch_df['Bulan'], 
-    y=branch_df['Volume OPT JKN'], 
-    name=cabang, 
-    legendgroup=cabang, 
-    showlegend=False,
-    base=branch_df['Volume OPT Non JKN'], 
-    offsetgroup=cabang, 
-    marker_color=colors.get(cabang)['dark'],
-    text=branch_df['Volume OPT JKN'].apply(lambda x: f"{int(x):,}" if x > 0 else ""),
-    textposition='inside', 
-    insidetextanchor='middle', 
-    textfont=dict(color='white', size=10),
-    # PERBAIKAN DI SINI: Gunakan %{y} untuk nilai JKN saja
-    hovertemplate=f"<b>{cabang} (JKN)</b>: %{{y:,}} Pasien<br>Total: %{{base + y:,}} Pasien<extra></extra>"
-))
+        # Hitung Total Volume untuk digunakan di hover
+        branch_df['Total_Hover'] = branch_df['Volume OPT JKN'] + branch_df['Volume OPT Non JKN']
+        
+        # Label Growth untuk posisi paling atas
+        growth_labels = [f"<b>{'▲' if v >= 0 else '▼'} {abs(v):.1f}%</b>" if pd.notnull(v) else "" for v in branch_df['Vol Growth']]
+        growth_colors = ["#059669" if v >= 0 else "#dc2626" if pd.notnull(v) else "rgba(0,0,0,0)" for v in branch_df['Vol Growth']]
+        
+        # Trace 1: Volume OPT Non JKN (Warna Terang)
+        fig_vol.add_trace(go.Bar(
+            x=branch_df['Bulan'], y=branch_df['Volume OPT Non JKN'], 
+            name=cabang, legendgroup=cabang, showlegend=True,
+            offsetgroup=cabang, marker_color=colors.get(cabang)['light'],
+            # Simpan data total di customdata
+            customdata=branch_df['Total_Hover'],
+            text=branch_df['Volume OPT Non JKN'].apply(lambda x: f"{int(x):,}" if x > 0 else ""),
+            textposition='inside', insidetextanchor='middle', textfont=dict(size=10, color='#444444'),
+            # Hover: Munculkan nilai Non-JKN dan Total
+            hovertemplate=f"<b>{cabang} (Non JKN)</b>: %{{y:,}} Pasien<br>Total: %{{customdata:,}} Pasien<extra></extra>"
+        ))
+        
+        # Trace 2: Volume OPT JKN (Warna Gelap)
+        fig_vol.add_trace(go.Bar(
+            x=branch_df['Bulan'], y=branch_df['Volume OPT JKN'], 
+            name=cabang, legendgroup=cabang, showlegend=False,
+            base=branch_df['Volume OPT Non JKN'],
+            offsetgroup=cabang, marker_color=colors.get(cabang)['dark'],
+            # Simpan data total di customdata
+            customdata=branch_df['Total_Hover'],
+            text=branch_df['Volume OPT JKN'].apply(lambda x: f"{int(x):,}" if x > 0 else ""),
+            textposition='inside', insidetextanchor='middle', textfont=dict(color='white', size=10),
+            # Hover: Munculkan nilai JKN dan Total
+            hovertemplate=f"<b>{cabang} (JKN)</b>: %{{y:,}} Pasien<br>Total: %{{customdata:,}} Pasien<extra></extra>"
+        ))
 
-            # Trace 3: Label Growth
-            fig_vol.add_trace(go.Bar(
-                x=branch_df['Bulan'], y=branch_df['Total Volume OPT'], 
-                offsetgroup=cabang, showlegend=False,
-                text=growth_labels, textposition='outside', textfont=dict(color=growth_colors, size=11),
-                marker_color='rgba(0,0,0,0)', hoverinfo='skip'
-            ))
+        # Trace 3: Label Growth (Paling Atas)
+        fig_vol.add_trace(go.Bar(
+            x=branch_df['Bulan'], y=branch_df['Total Volume OPT'], 
+            offsetgroup=cabang, showlegend=False,
+            text=growth_labels, textposition='outside', textfont=dict(color=growth_colors, size=11),
+            marker_color='rgba(0,0,0,0)', hoverinfo='skip'
+        ))
 
-        fig_vol.update_layout(barmode='group', height=450, margin=dict(t=50, b=10),
-                              yaxis_title="Jumlah Pasien",
-                              yaxis=dict(range=[0, filtered_df['Total Volume OPT'].max() * 1.35]),
-                              legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-        st.plotly_chart(fig_vol, use_container_width=True)
+    fig_vol.update_layout(barmode='group', height=450, margin=dict(t=50, b=10),
+                          yaxis_title="Jumlah Pasien",
+                          yaxis=dict(range=[0, filtered_df['Total Volume OPT'].max() * 1.35]),
+                          legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+    st.plotly_chart(fig_vol, use_container_width=True)
 
         # Footer Rata-rata Volume
         st.markdown("**Rata-rata Volume OPT (Total):**")
