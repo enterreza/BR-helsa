@@ -29,7 +29,7 @@ def load_data():
         ]
         for col in numeric_cols:
             if col in raw_df.columns:
-                # Regex diperbaiki agar titik desimal tidak dihapus (mencegah 20.0 jadi 200)
+                # Regex agar titik desimal tidak dihapus
                 raw_df[col] = raw_df[col].astype(str).str.replace(r'[^\d.]', '', regex=True)
                 raw_df[col] = pd.to_numeric(raw_df[col], errors='coerce').fillna(0)
             elif col == 'Pintu Poli':
@@ -73,6 +73,7 @@ if not df.empty:
     filtered_df['Total IGD to IPT'] = filtered_df['Volume IGD to IPT JKN'] + filtered_df['Volume IGD to IPT Non JKN']
     filtered_df['CR IGD to IPT'] = np.where(filtered_df['Total IGD'] > 0, (filtered_df['Total IGD to IPT'] / filtered_df['Total IGD']) * 100, 0)
     
+    # Kapasitas Rajal 2025
     capacity_data = []
     for _, row in filtered_df.iterrows():
         mf, sat = count_days(2025, row['Bulan'])
@@ -120,7 +121,6 @@ if not df.empty:
                     g_txt = f"<span style='color:{g_color}'><b>{symbol} {abs(g_val):.1f}%</b></span>"
                     
                     if target_col and target_col in branch_df:
-                        # FIX SYNTAX: Kurung tutup lengkap
                         ach = (branch_df[col_total].iloc[idx] / branch_df[target_col].iloc[idx] * 100) if branch_df[target_col].iloc[idx] > 0 else 0
                         ach_color = "#059669" if ach >= 100 else "#dc2626"
                         display_labels.append(f"<span style='color:{ach_color}'><b>{ach:.1f}%</b></span><br>{g_txt}")
@@ -167,24 +167,54 @@ if not df.empty:
                         st.markdown(f"{disp_v(val)}{suffix}", unsafe_allow_html=True)
                 cols2[-1].markdown(f"### 🏛️ Grup Total\n**{disp_v(group_total)}**")
 
-    # --- EKSEKUSI ---
-    create_stacked_chart(filtered_df, "📈 Realisasi Revenue (Stacked Opt vs Ipt)", 'Actual Revenue (Ipt)', 'Actual Revenue (Opt)', 'Actual Revenue (Total)', 'Actual Revenue (Total)_Growth', "Revenue", is_revenue=True, target_col='Target Revenue')
+    # --- EKSEKUSI GRAFIK UTAMA ---
+    create_stacked_chart(filtered_df, "📈 Realisasi Revenue (Opt vs Ipt)", 'Actual Revenue (Ipt)', 'Actual Revenue (Opt)', 'Actual Revenue (Total)', 'Actual Revenue (Total)_Growth', "Revenue", is_revenue=True, target_col='Target Revenue')
     create_stacked_chart(filtered_df, "👥 Volume Outpatient (OPT)", 'Volume OPT JKN', 'Volume OPT Non JKN', 'Total OPT', 'Total OPT_Growth', "Volume OPT")
     
-    # --- GRAFIK: ANALISIS KAPASITAS PRODUKSI RAJAL (2025) ---
+    # --- GRAFIK: ANALISIS KAPASITAS PRODUKSI RAJAL (Update Visual) ---
     with st.container(border=True):
         st.subheader("⚙️ Analisis Kapasitas Produksi Rawat Jalan (2025)")
         fig_cap = go.Figure()
         for cb in selected_cabang:
             branch_df = filtered_df[filtered_df['Cabang'] == cb]
             if branch_df.empty: continue
-            fig_cap.add_trace(go.Bar(x=branch_df['Bulan'], y=branch_df['Kapasitas Maks'], name=f"Kapasitas Maks. ({cb})", offsetgroup=cb, marker_color=colors.get(cb)['light'], text=branch_df['Utilisasi Poli'].apply(lambda x: f"<b>{x:.1f}%</b><br>Util"), textposition='inside', textangle=0, textfont=dict(size=10, color='#444444')))
-            fig_cap.add_trace(go.Scatter(x=branch_df['Bulan'], y=branch_df['Total OPT'], name=f"Volume Rajal ({cb})", mode='markers+lines', line=dict(color=colors.get(cb)['dark'], width=3)))
+            
+            # 1. Bar Chart -> Kapasitas Maks. Per Bulan (Info di dalam bar)
+            fig_cap.add_trace(go.Bar(
+                x=branch_df['Bulan'], y=branch_df['Kapasitas Maks'],
+                name=f"Kapasitas Maks. ({cb})", offsetgroup=cb, 
+                marker_color=colors.get(cb)['light'],
+                text=branch_df['Kapasitas Maks'].apply(lambda x: f"<b>{int(x):,}</b>"),
+                textposition='inside', textangle=0, textfont=dict(size=10, color='#444444'),
+                hovertemplate=f"<b>{cb}</b><br>Kapasitas: %{{y:,.0f}}<extra></extra>"
+            ))
+            
+            # 2. Line Chart -> Volume Rajal
+            fig_cap.add_trace(go.Scatter(
+                x=branch_df['Bulan'], y=branch_df['Total OPT'],
+                name=f"Volume Rajal ({cb})", mode='markers+lines',
+                line=dict(color=colors.get(cb)['dark'], width=3),
+                hovertemplate=f"<b>{cb}</b><br>Volume: %{{y:,.0f}}<extra></extra>"
+            ))
+
+            # 3. Label di Atas Bar -> Persentase Utilisasi (Font 14)
+            fig_cap.add_trace(go.Bar(
+                x=branch_df['Bulan'], y=branch_df['Kapasitas Maks'],
+                offsetgroup=cb, showlegend=False,
+                text=branch_df['Utilisasi Poli'].apply(lambda x: f"<b>{x:.1f}%</b>"),
+                textposition='outside', textfont=dict(size=14, color='#333'),
+                marker_color='rgba(0,0,0,0)', hoverinfo='skip', cliponaxis=False
+            ))
         
-        y_max = filtered_df[['Kapasitas Maks', 'Total OPT']].values.max() if not filtered_df.empty else 100
-        fig_cap.update_layout(barmode='group', height=500, margin=dict(t=80, b=10), yaxis=dict(title="Jumlah Pasien", range=[0, y_max * 1.25]), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        y_max = filtered_df['Kapasitas Maks'].max() if not filtered_df.empty else 100
+        fig_cap.update_layout(
+            barmode='group', height=520, margin=dict(t=100, b=10), 
+            yaxis=dict(title="Jumlah Pasien", range=[0, y_max * 1.25]),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
         st.plotly_chart(fig_cap, use_container_width=True)
 
+    # --- GRAFIK LAINNYA ---
     create_stacked_chart(filtered_df, "🏥 Volume Inpatient (Ranap)", 'Volume IPT JKN', 'Volume IPT Non JKN', 'Total IPT', 'Total IPT_Growth', "Volume IPT")
     create_stacked_chart(filtered_df, "🚑 Volume IGD", 'Volume IGD JKN', 'Volume IGD Non JKN', 'Total IGD', 'Total IGD_Growth', "Volume IGD")
     create_stacked_chart(filtered_df, "🎯 Volume Konversi IGD ke Rawat Inap (Ranap)", 'Volume IGD to IPT JKN', 'Volume IGD to IPT Non JKN', 'Total IGD to IPT', 'Total IGD to IPT_Growth', "Volume Konversi")
