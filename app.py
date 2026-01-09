@@ -29,7 +29,7 @@ def load_data():
         ]
         for col in numeric_cols:
             if col in raw_df.columns:
-                # Regex agar titik desimal tidak dihapus
+                # Menjaga titik desimal agar 20.0 tidak menjadi 200
                 raw_df[col] = raw_df[col].astype(str).str.replace(r'[^\d.]', '', regex=True)
                 raw_df[col] = pd.to_numeric(raw_df[col], errors='coerce').fillna(0)
             elif col == 'Pintu Poli':
@@ -39,7 +39,6 @@ def load_data():
         st.error(f"Gagal memuat data: {e}")
         return pd.DataFrame()
 
-# Fungsi hitung hari kerja (Sen-Jum) dan Sabtu (Tahun 2025)
 def count_days(year, month_name):
     month_idx = MONTH_MAP.get(month_name, 1)
     matrix = calendar.monthcalendar(year, month_idx)
@@ -129,107 +128,4 @@ if not df.empty:
 
                 fig.add_trace(go.Bar(x=branch_df['Bulan'], y=branch_df[col_total], offsetgroup=cb, showlegend=False, text=display_labels, textposition='outside', textfont=dict(size=14), marker_color='rgba(0,0,0,0)', cliponaxis=False))
 
-            max_v = df_data[col_total].max() if not df_data.empty else 0
-            y_limit = max_v * 1.25 if max_v > 0 else 100
-            yaxis_config = dict(title=y_label, range=[0, y_limit])
-            if is_revenue:
-                ticks = np.arange(0, y_limit + 1e9, 1e9)
-                fig.update_yaxes(tickvals=ticks, ticktext=[f"{int(v/1e9)}M" for v in ticks])
-            fig.update_layout(barmode='group', height=520, margin=dict(t=120, b=10), yaxis=yaxis_config, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # --- SUMMARY FOOTER ---
-            df_ok = df_data[df_data[col_total] > 0]
-            if not df_ok.empty:
-                avg_branch = df_ok.groupby('Cabang', observed=True)[col_total].mean()
-                sum_branch = df_ok.groupby('Cabang', observed=True)[col_total].sum()
-                monthly_group_totals = df_ok.groupby('Bulan', observed=True)[col_total].sum()
-                group_avg = monthly_group_totals.mean() 
-                group_total = sum_branch.sum()
-
-                def disp_v(val): return f"Rp {val/1e9:.2f} M" if is_revenue else f"{int(val):,} Pasien"
-
-                st.markdown(f"**Rata-rata {y_label} per Bulan:**")
-                cols = st.columns(len(selected_cabang) + 1)
-                for idx, cb in enumerate(selected_cabang):
-                    with cols[idx]:
-                        st.markdown(f"<span style='color:{colors.get(cb)['dark']};'>● <b>{cb}</b></span>", unsafe_allow_html=True)
-                        st.write(disp_v(avg_branch.get(cb, 0)))
-                cols[-1].markdown(f"### 🏆 Grup Avg\n**{disp_v(group_avg)}**")
-
-                st.markdown(f"**Total {y_label} Keseluruhan:**")
-                cols2 = st.columns(len(selected_cabang) + 1)
-                for idx, cb in enumerate(selected_cabang):
-                    with cols2[idx]:
-                        st.markdown(f"<span style='color:{colors.get(cb)['dark']};'>● <b>{cb}</b></span>", unsafe_allow_html=True)
-                        val = sum_branch.get(cb, 0)
-                        suffix = f" <br><small>({(val/group_total*100):.1f}% Kontr.)</small>" if is_revenue and group_total > 0 else ""
-                        st.markdown(f"{disp_v(val)}{suffix}", unsafe_allow_html=True)
-                cols2[-1].markdown(f"### 🏛️ Grup Total\n**{disp_v(group_total)}**")
-
-    # --- EKSEKUSI GRAFIK UTAMA ---
-    create_stacked_chart(filtered_df, "📈 Realisasi Revenue (Opt vs Ipt)", 'Actual Revenue (Ipt)', 'Actual Revenue (Opt)', 'Actual Revenue (Total)', 'Actual Revenue (Total)_Growth', "Revenue", is_revenue=True, target_col='Target Revenue')
-    create_stacked_chart(filtered_df, "👥 Volume Outpatient (OPT)", 'Volume OPT JKN', 'Volume OPT Non JKN', 'Total OPT', 'Total OPT_Growth', "Volume OPT")
-    
-    # --- GRAFIK: ANALISIS KAPASITAS PRODUKSI RAJAL (Update Visual) ---
-    with st.container(border=True):
-        st.subheader("⚙️ Analisis Kapasitas Produksi Rawat Jalan (2025)")
-        fig_cap = go.Figure()
-        for cb in selected_cabang:
-            branch_df = filtered_df[filtered_df['Cabang'] == cb]
-            if branch_df.empty: continue
-            
-            # 1. Bar Chart -> Kapasitas Maks. Per Bulan (Info di dalam bar)
-            fig_cap.add_trace(go.Bar(
-                x=branch_df['Bulan'], y=branch_df['Kapasitas Maks'],
-                name=f"Kapasitas Maks. ({cb})", offsetgroup=cb, 
-                marker_color=colors.get(cb)['light'],
-                text=branch_df['Kapasitas Maks'].apply(lambda x: f"<b>{int(x):,}</b>"),
-                textposition='inside', textangle=0, textfont=dict(size=10, color='#444444'),
-                hovertemplate=f"<b>{cb}</b><br>Kapasitas: %{{y:,.0f}}<extra></extra>"
-            ))
-            
-            # 2. Line Chart -> Volume Rajal
-            fig_cap.add_trace(go.Scatter(
-                x=branch_df['Bulan'], y=branch_df['Total OPT'],
-                name=f"Volume Rajal ({cb})", mode='markers+lines',
-                line=dict(color=colors.get(cb)['dark'], width=3),
-                hovertemplate=f"<b>{cb}</b><br>Volume: %{{y:,.0f}}<extra></extra>"
-            ))
-
-            # 3. Label di Atas Bar -> Persentase Utilisasi (Font 14)
-            fig_cap.add_trace(go.Bar(
-                x=branch_df['Bulan'], y=branch_df['Kapasitas Maks'],
-                offsetgroup=cb, showlegend=False,
-                text=branch_df['Utilisasi Poli'].apply(lambda x: f"<b>{x:.1f}%</b>"),
-                textposition='outside', textfont=dict(size=14, color='#333'),
-                marker_color='rgba(0,0,0,0)', hoverinfo='skip', cliponaxis=False
-            ))
-        
-        y_max = filtered_df['Kapasitas Maks'].max() if not filtered_df.empty else 100
-        fig_cap.update_layout(
-            barmode='group', height=520, margin=dict(t=100, b=10), 
-            yaxis=dict(title="Jumlah Pasien", range=[0, y_max * 1.25]),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-        )
-        st.plotly_chart(fig_cap, use_container_width=True)
-
-    # --- GRAFIK LAINNYA ---
-    create_stacked_chart(filtered_df, "🏥 Volume Inpatient (Ranap)", 'Volume IPT JKN', 'Volume IPT Non JKN', 'Total IPT', 'Total IPT_Growth', "Volume IPT")
-    create_stacked_chart(filtered_df, "🚑 Volume IGD", 'Volume IGD JKN', 'Volume IGD Non JKN', 'Total IGD', 'Total IGD_Growth', "Volume IGD")
-    create_stacked_chart(filtered_df, "🎯 Volume Konversi IGD ke Rawat Inap (Ranap)", 'Volume IGD to IPT JKN', 'Volume IGD to IPT Non JKN', 'Total IGD to IPT', 'Total IGD to IPT_Growth', "Volume Konversi")
-
-    with st.container(border=True):
-        st.subheader("📊 Tren Conversion Rate (CR) IGD ke Ranap")
-        fig_cr = go.Figure()
-        for cb in selected_cabang:
-            branch_df = filtered_df[filtered_df['Cabang'] == cb]
-            if not branch_df.empty:
-                fig_cr.add_trace(go.Scatter(x=branch_df['Bulan'], y=branch_df['CR IGD to IPT'], name=cb, mode='lines+markers+text', text=branch_df['CR IGD to IPT'].apply(lambda x: f"<b>{x:.1f}%</b>" if x > 0 else ""), textposition="top center", line=dict(color=colors.get(cb)['dark'], width=3)))
-        fig_cr.update_layout(height=400, yaxis_title="Persentase (%)", yaxis=dict(range=[0, 115]), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-        st.plotly_chart(fig_cr, use_container_width=True)
-
-    with st.expander("🔍 Lihat Detail Data Mentah"):
-        st.dataframe(filtered_df)
-else:
-    st.warning("Data tidak tersedia.")
+            max_v = df_data[col_total].max() if not df_data.empty else
