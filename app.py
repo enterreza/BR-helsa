@@ -19,23 +19,28 @@ MONTH_MAP = {
 @st.cache_data(ttl=300)
 def load_data():
     try:
+        # Menambahkan parameter manual agar cache benar-benar terupdate
         raw_df = pd.read_csv(URL)
         raw_df.columns = raw_df.columns.str.strip()
+        
         numeric_cols = [
             'Target Revenue', 'Actual Revenue (Total)', 'Actual Revenue (Opt)', 'Actual Revenue (Ipt)',
             'Volume OPT JKN', 'Volume OPT Non JKN', 'Volume IPT JKN', 'Volume IPT Non JKN',
             'Volume IGD JKN', 'Volume IGD Non JKN', 'Volume IGD to IPT JKN', 'Volume IGD to IPT Non JKN',
             'Pintu Poli'
         ]
+        
         for col in numeric_cols:
             if col in raw_df.columns:
-                raw_df[col] = raw_df[col].astype(str).str.replace(r'[^\d]', '', regex=True)
+                # PERBAIKAN: Jangan hapus titik desimal
+                # Kita hanya hapus simbol mata uang atau koma ribuan (jika ada)
+                raw_df[col] = raw_df[col].astype(str).str.replace(r'[^\d.]', '', regex=True)
                 raw_df[col] = pd.to_numeric(raw_df[col], errors='coerce').fillna(0)
             elif col == 'Pintu Poli':
                 raw_df[col] = 0
         return raw_df
     except Exception as e:
-        st.error(f"Gagal memuat data: {e}")
+        st.error(f"Error: {e}")
         return pd.DataFrame()
 
 # Fungsi hitung hari kerja (Sen-Jum) dan Sabtu dalam sebulan (2026)
